@@ -1,13 +1,11 @@
 // ==UserScript==
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.0.1
-// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos e rascunhos.
+// @version      4.0.3
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
 // @supportURL   https://github.com/andresdiniz/ToolboxWaze/issues
-// @updateURL    https://github.com/andresdiniz/solicitacoeswme/blob/main/solicitacoes-wme.js
-// @downloadURL  https://github.com/andresdiniz/solicitacoeswme/blob/main/solicitacoes-wme.js
+// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail (sem colar token), contexto SDK, formulários da API, anexos e rascunhos.
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
 // @match        https://beta.waze.com/editor*
@@ -26,7 +24,7 @@
 (async function () {
   'use strict';
   if (window.top !== window.self) return;
-  const VERSION='4.0.1', BASE='https://wazetoolbox.acheireviews.com.br';
+  const VERSION='4.0.3', BASE='https://wazetoolbox.acheireviews.com.br';
   const API=BASE+'/api/wme', PREFIX='[ToolboxWaze]', PAGE=typeof unsafeWindow==='undefined'?window:unsafeWindow;
   const log=(...a)=>console.info(PREFIX,...a), warn=(...a)=>console.warn(PREFIX,...a);
   const store={get:async(k,d=null)=>await GM_getValue(k,d),set:async(k,v)=>await GM_setValue(k,v),del:async k=>await GM_deleteValue(k)};
@@ -65,6 +63,7 @@
   .row{display:flex;align-items:center;gap:8px;flex-wrap:wrap}.preview{display:flex;gap:8px;flex-wrap:wrap}.preview figure{margin:8px 0;border:1px solid #dce9e1;border-radius:8px;padding:6px;width:130px}.preview img{width:116px;height:80px;object-fit:cover}.preview small{display:block;overflow-wrap:anywhere}.preview button{padding:3px 7px;font-size:11px}
   @media(max-width:760px){.overlay{padding:5px}.dialog{height:98vh;width:99vw;border-radius:10px}.layout{grid-template-columns:1fr}.scroll{padding:12px}.types{grid-template-columns:1fr 1fr}header,footer{padding:12px}.side pre{max-height:110px}}
   `;
+  css.textContent += `.mine-request{display:flex;align-items:center;gap:10px;flex-wrap:wrap;padding:12px;margin-bottom:8px;border:1px solid #dce9e1;border-radius:10px;text-decoration:none;color:#163d2b;background:#fff}.mine-request:hover{background:#eef8f2;border-color:#198754}.mine-request:focus-visible{outline:3px solid #71bca0;outline-offset:2px}.mine-open{margin-left:auto;font-size:12px;font-weight:600}`;
   const fab=el('button','Toolbox · Solicitações',root,'fab');fab.type='button';
   const overlay=el('div',null,root,'overlay');overlay.hidden=true;
   const dialog=el('section',null,overlay,'dialog');dialog.setAttribute('role','dialog');dialog.setAttribute('aria-modal','true');dialog.setAttribute('aria-labelledby','tw3-title');
@@ -108,7 +107,7 @@
   const clearButton=el('button','Limpar rascunho',footer),sendButton=el('button','Enviar solicitação',footer,'primary');sendButton.disabled=true;
   const previews=new Set();
   function notice(text,type=''){status.textContent=text;status.className='status '+type;status.hidden=!text;}
-  function updateBusy(){sendButton.disabled=busy||conn!=='ativo'||!identity||!definition||Boolean(unresolved);registerButton.disabled=busy;verifyButton.disabled=busy;resendButton.disabled=busy;changeButton.disabled=busy;disconnectButton.disabled=busy;retryButton.disabled=busy;clearButton.disabled=busy;refresh.disabled=busy;pendingBox.hidden=!unresolved||conn!=='ativo';}
+  function updateBusy(){sendButton.disabled=busy||conn!=='ativo'||!identity||!definition||!definition.campos?.length||Boolean(unresolved);registerButton.disabled=busy;verifyButton.disabled=busy;resendButton.disabled=busy;changeButton.disabled=busy;disconnectButton.disabled=busy;retryButton.disabled=busy;clearButton.disabled=busy;refresh.disabled=busy;pendingBox.hidden=!unresolved||conn!=='ativo';}
   function api(method,path,body){
     const credential=token;
     return new Promise((resolve,reject)=>{
@@ -216,7 +215,7 @@
     if(data.slug!==slug||!Array.isArray(data.campos)||new Set(data.campos.map(f=>f.chave)).size!==data.campos.length||data.campos.some(f=>!/^[-a-zA-Z0-9_]+$/.test(f.chave)))throw new Error('Definição de formulário inválida.');
     definition=data;restoring=true;answers={};files={};const saved=await store.get(await draftKey());if(saved&&Date.now()-saved.updatedAt<7*86400000){answers=saved.answers||{};if(saved.context)context=saved.context;}
     prefill();formTitle.textContent=data.nome;formDescription.textContent=data.descricao||'';summary.textContent=summarize();renderFields();dirty=false;restoring=false;
-    for(const b of typeList.children)b.classList.toggle('active',b.dataset.slug===slug);notice('');updateBusy();
+    for(const b of typeList.children)b.classList.toggle('active',b.dataset.slug===slug);log('Campos recebidos', {slug, quantidade: data.campos.length});notice(data.campos.length ? '' : 'A API retornou este formulário sem campos. Confira a migration no banco do servidor.', data.campos.length ? '' : 'error');updateBusy();
   }catch(e){restoring=false;definition=null;notice(e.message,'error');updateBusy();authLost(e);}}
   const AUTH_CODES=['email_nao_confirmado','token_desconhecido','token_invalido','dispositivo_revogado','nao_autenticado'];
   function authLost(e){if(AUTH_CODES.includes(e?.codigo)){setTimeout(()=>boot(),0);return true;}return false;}
@@ -291,13 +290,42 @@
     try{if(token)await api('POST','/dispositivo/revogar');}catch(e){warn('Revogação no servidor falhou:',e.message);}
     await dropToken();setConn('registro');settings.hidden=true;notice('Desconectado deste navegador.');busy=false;updateBusy();
   }
-  async function loadMine(){
-    mineCard.hidden=!mineCard.hidden;if(mineCard.hidden)return;
-    mineList.replaceChildren(el('p','Carregando…',null,'muted'));
-    try{const d=await api('GET','/solicitacoes');mineList.replaceChildren();
-      if(!d.solicitacoes?.length){el('p','Você ainda não enviou solicitações.',mineList,'muted');return;}
-      for(const s of d.solicitacoes){const row=el('div',null,mineList,'row');row.style.marginBottom='6px';el('strong','#'+s.id,row);el('span',s.formulario,row);el('span',s.statusLabel,row,'muted');el('small',new Date(s.criadaEm).toLocaleDateString(),row);}
-    }catch(e){mineList.replaceChildren(el('p',e.message,null,'error-text'));authLost(e);}
+  function requestUrl(item) {
+    const candidate = item.url || item.link || (item.id != null ? '/solicitacoes/' + encodeURIComponent(String(item.id)) : null);
+    if (!candidate) return null;
+    try {
+      const url = new URL(candidate, BASE);
+      return url.origin === new URL(BASE).origin && url.protocol === 'https:' ? url.href : null;
+    } catch { return null; }
+  }
+  async function loadMine() {
+    mineCard.hidden = !mineCard.hidden;
+    if (mineCard.hidden) return;
+    mineList.replaceChildren(el('p', 'Carregando…', null, 'muted'));
+    try {
+      const data = await api('GET', '/solicitacoes');
+      mineList.replaceChildren();
+      if (!data.solicitacoes?.length) {
+        el('p', 'Você ainda não enviou solicitações.', mineList, 'muted');
+        return;
+      }
+      for (const item of data.solicitacoes) {
+        const url = requestUrl(item);
+        const row = el(url ? 'a' : 'div', null, mineList, 'mine-request');
+        if (url) {
+          row.href = url; row.target = '_blank'; row.rel = 'noopener noreferrer';
+          row.title = 'Abrir solicitação #' + item.id + ' no ToolboxWaze';
+        }
+        el('strong', '#' + item.id, row);
+        el('span', item.formulario || item.tipoLabel || 'Solicitação', row);
+        el('span', item.statusLabel || item.status || '', row, 'muted');
+        const date = new Date(item.criadaEm);
+        el('small', Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(), row);
+        if (url) el('span', 'Abrir ↗', row, 'mine-open');
+      }
+    } catch (error) {
+      mineList.replaceChildren(el('p', error.message, null, 'error-text')); authLost(error);
+    }
   }
   function saveNow(){if(!identity||!definition)return Promise.resolve();clearTimeout(saveTimer);return store.set('tw3_draft_'+String(identity.id)+'_'+definition.slug,{answers:structuredClone(answers),context,updatedAt:Date.now()});}
   async function result(data){if(!data.solicitacao?.id)throw Object.assign(new Error('Resposta sem identificador de solicitação.'),{uncertain:true});
@@ -305,7 +333,7 @@
     if(data.solicitacao.url){try{const u=new URL(data.solicitacao.url,BASE);if(u.origin===BASE){const a=el('a',' Abrir no ToolboxWaze',status);a.href=u.href;a.target='_blank';a.rel='noopener noreferrer';}}catch{}}
     if(definition)await store.del(await draftKey());clearTimeout(saveTimer);answers={};files={};dirty=false;renderFields();draftNote.textContent='Enviado. Anexos e rascunho removidos.';
   }
-  async function send(){if(busy||!identity||!definition||unresolved)return;
+  async function send(){if(busy||!identity||!definition||!definition.campos?.length||unresolved)return;
     renderFields();const errors=validate();if(Object.keys(errors).length){for(const [k,v]of Object.entries(errors))fieldError(k,v);notice('Revise os campos destacados.','error');fieldArea.querySelector('.bad')?.focus();return;}
     const key=uid();const payload={formulario:definition.slug,versaoFormulario:definition.versao,respostas:{},contexto:context,origem:'wme-userscript',scriptVersion:VERSION,clientRequestId:key};
     for(const f of definition.campos){if(visible(f)&&f.tipo!=='file'&&answers[f.chave]!==undefined)payload.respostas[f.chave]=f.tipo==='number'&&answers[f.chave]!==''?Number(answers[f.chave]):answers[f.chave];}
@@ -326,7 +354,7 @@
     else if(data.estado==='nao_criado'){unresolved=null;await store.del('tw3_pending');notice('O servidor confirmou que a solicitação não foi criada. Você pode enviar novamente.');}
     else notice('Envio ainda em processamento. Consulte novamente em instantes.');
   }catch(e){notice('Não foi possível confirmar: '+e.message,'error');}finally{busy=false;updateBusy();}}
-  function open(){previousFocus=document.activeElement;overlay.hidden=false;if(!context&&sdk){context=collect();summary.textContent=summarize();}prefillNick();if(!identity)boot();else closeButton.focus();updateBusy();}
+  function open(){previousFocus=document.activeElement;overlay.hidden=false;if(!context&&sdk){context=collect();summary.textContent=summarize();}prefillNick();if(!identity)boot();closeButton.focus();updateBusy();}
   function close(){if(busy){notice('Aguarde a operação terminar.');return;}if(dirty)scheduleSave();overlay.hidden=true;stopPoll();previousFocus?.focus();}
   fab.onclick=open;closeButton.onclick=close;settingsButton.onclick=()=>{settings.hidden=!settings.hidden;};mineButton.onclick=loadMine;
   registerButton.onclick=register;verifyButton.onclick=async()=>{await boot(true);if(conn==='pendente')notice('Ainda aguardando a confirmação do e-mail.');};
@@ -336,9 +364,42 @@
   sendButton.onclick=send;checkButton.onclick=checkPending;
   clearButton.onclick=async()=>{if(!definition||!window.confirm('Apagar o rascunho deste formulário?'))return;clearTimeout(saveTimer);await store.del(await draftKey());answers={};files={};dirty=false;prefill();renderFields();draftNote.textContent='Rascunho limpo.';};
   overlay.addEventListener('click',e=>{if(e.target===overlay)close();});
-  root.addEventListener('keydown',e=>{if(overlay.hidden)return;if(e.key==='Escape'){e.preventDefault();e.stopPropagation();close();}if(e.key==='Enter'&&(e.ctrlKey||e.metaKey)){e.preventDefault();if(e.composedPath().includes(registerCard)){register();return;}if(e.composedPath().includes(settings))return;send();}
-    if(e.key==='Tab'){const nodes=Array.from(dialog.querySelectorAll('button,a,input,select,textarea')).filter(n=>!n.disabled&&n.getClientRects().length);const first=nodes[0],last=nodes.at(-1),active=root.activeElement;if(e.shiftKey&&active===first){e.preventDefault();last?.focus();}else if(!e.shiftKey&&active===last){e.preventDefault();first?.focus();}}
-  });
+  function modalKeydown(event) {
+    if (event.key === 'Escape') { event.preventDefault(); close(); return; }
+    if (event.key === 'Enter' && (event.ctrlKey || event.metaKey)) {
+      event.preventDefault();
+      if (event.isComposing || event.repeat) return;
+      const path = event.composedPath();
+      if (path.includes(registerCard)) { register(); return; }
+      if (path.includes(settings)) return;
+      if (!sendButton.disabled) send();
+      return;
+    }
+    if (event.key === 'Tab') {
+      const nodes = Array.from(dialog.querySelectorAll('button,a,input,select,textarea'))
+        .filter(n => !n.disabled && n.getClientRects().length);
+      const first = nodes[0], last = nodes.at(-1), active = root.activeElement;
+      if (!nodes.length) { event.preventDefault(); return; }
+      if (event.shiftKey && (active === first || !dialog.contains(active))) {
+        event.preventDefault(); last.focus();
+      } else if (!event.shiftKey && (active === last || !dialog.contains(active))) {
+        event.preventDefault(); first.focus();
+      }
+    }
+  }
+  function shieldKeyboard(event) {
+    if (overlay.hidden) return;
+    // A digitacao normal mantem sua acao padrao; apenas a propagacao e bloqueada.
+    if (!dialog.contains(root.activeElement) && event.type === 'keydown' && event.key.length === 1 && !event.ctrlKey && !event.metaKey && !event.altKey) {
+      closeButton.focus();
+    }
+    if (event.type === 'keydown') modalKeydown(event);
+    event.stopImmediatePropagation();
+    event.stopPropagation();
+  }
+  for (const type of ['keydown', 'keypress', 'keyup']) {
+    window.addEventListener(type, shieldKeyboard, {capture: true});
+  }
   PAGE.twDiagnostico=()=>{const d={version:VERSION,sdk:!!sdk,conn,connected:!!identity,form:definition?.slug,selected:selection().length,pending:!!unresolved,modalOpen:!overlay.hidden};log(d);return d;};
   log('Interface carregada',VERSION);updateBusy();
   try{for(let i=0;i<200;i++){if(PAGE.SDK_INITIALIZED&&typeof PAGE.getWmeSdk==='function')break;if(i===199)throw new Error('SDK indisponível após 60 segundos.');await new Promise(r=>setTimeout(r,300));}
