@@ -1,8 +1,8 @@
 // ==UserScript==
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.1.0
-// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas e acompanhamento.
+// @version      4.2.0
+// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
 // @supportURL   https://github.com/andresdiniz/ToolboxWaze/issues
@@ -17,18 +17,40 @@
 // @grant        GM_getValue
 // @grant        GM_setValue
 // @grant        GM_deleteValue
+// @grant        GM_addValueChangeListener
 // @grant        GM_xmlhttpRequest
+// @require      https://update.greasyfork.org/scripts/602363/1986340/WME%20Alert%20System.js
 // @connect      wazetoolbox.acheireviews.com.br
 // @run-at       document-idle
 // ==/UserScript==
-/* global unsafeWindow, GM_getValue, GM_setValue, GM_deleteValue, GM_xmlhttpRequest */
+/* global unsafeWindow, GM_getValue, GM_setValue, GM_deleteValue, GM_addValueChangeListener, GM_xmlhttpRequest, WmeAlertSystem */
 (async function () {
   'use strict';
   if (window.top !== window.self) return;
-  const VERSION='4.1.0', BASE='https://wazetoolbox.acheireviews.com.br';
+  const VERSION='4.2.0', BASE='https://wazetoolbox.acheireviews.com.br';
   const API=BASE+'/api/wme', PREFIX='[ToolboxWaze]', PAGE=typeof unsafeWindow==='undefined'?window:unsafeWindow;
   const log=(...a)=>console.info(PREFIX,...a), warn=(...a)=>console.warn(PREFIX,...a);
   const store={get:async(k,d=null)=>await GM_getValue(k,d),set:async(k,v)=>await GM_setValue(k,v),del:async k=>await GM_deleteValue(k)};
+  const alerts=(await WmeAlertSystem.ready()).register({
+    scriptId:'toolboxwaze-solicitacoes',
+    scriptName:'ToolboxWaze — Central de solicitações WME',
+    version:VERSION,
+    changelog:{
+      mode:'bell',
+      loader:async()=>[{
+        version:'4.2.0',
+        date:'2026-11-15',
+        changes:{
+          'pt-BR':'<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
+        }
+      }]
+    },
+    links:{greasyFork:'https://greasyfork.org/pt-BR/scripts/602363-wme-alert-system'}
+  });
+  alerts.notification.onAction('abrir-solicitacao',(n)=>{
+    const url=n?.data?.url;
+    if(url)window.open(url,'_blank','noopener');
+  });
   const uid=()=>crypto.randomUUID();
   const TOKEN_KEY='tw_device_token', LEGACY_KEY='toolbox_api_token';
   let sdk=null, token=(await store.get(TOKEN_KEY,''))||(await store.get(LEGACY_KEY,'')), identity=null, forms=[], definition=null;
@@ -295,6 +317,7 @@
     connText.textContent=({ativo:'Conectado.',pendente:'Aguardando a confirmação do e-mail.',registro:'Não conectado.',carregando:'Conectando…',erro:'Sem conexão com o servidor.'})[s]||'';
     retryButton.hidden=s!=='erro';disconnectButton.hidden=!token;if(s==='erro')settings.hidden=false;
     if(s==='registro'&&!overlay.hidden)setTimeout(()=>(mailInput.value?consentBox:mailInput).focus(),0);
+    if(s==='ativo')startAlertPoll();else stopAlertPoll();
     syncSteps();updateBusy();
   }
   function prefillNick(){let nick='';try{nick=sdk?.State?.getUserInfo?.()?.userName||'';}catch{}
@@ -303,6 +326,28 @@
   async function dropToken(){token='';await store.del(TOKEN_KEY);await store.del(LEGACY_KEY);identity=null;definition=null;forms=[];answers={};files={};revokePreviews();fieldArea.replaceChildren();typeList.replaceChildren();accountText.textContent='Desconectado';}
   function startPoll(){stopPoll();const until=Date.now()+20*60000;pollTimer=setInterval(()=>{if(overlay.hidden||conn!=='pendente'||Date.now()>until){stopPoll();return;}boot(true);},6000);}
   function stopPoll(){if(pollTimer){clearInterval(pollTimer);pollTimer=null;}}
+  let alertPollTimer=null;
+  let lastSeen=await store.get('tw_alerts_last_seen',null);
+  function startAlertPoll(){stopAlertPoll();alertPollTimer=setInterval(checkAlerts,60000);checkAlerts();}
+  function stopAlertPoll(){if(alertPollTimer){clearInterval(alertPollTimer);alertPollTimer=null;}}
+  async function checkAlerts(){
+    if(conn!=='ativo'||!identity)return;
+    try{
+      const qs=lastSeen?('?since='+encodeURIComponent(lastSeen)):'';
+      const data=await api('GET','/solicitacoes/alteracoes'+qs);
+      for(const item of (data.alteracoes||[])){
+        alerts.notification.add({
+          id:'solicitacao-'+item.id+'-'+item.atualizadoEm,
+          title:'Solicitação atualizada',
+          message:item.resumo||('#'+item.id+' — '+(item.statusLabel||item.status||'atualizada')),
+          buttonText:'Abrir',
+          action:'abrir-solicitacao',
+          data:{id:item.id,url:requestUrl(item)}
+        });
+      }
+      if(data.servidorEm){lastSeen=data.servidorEm;await store.set('tw_alerts_last_seen',lastSeen);}
+    }catch(e){warn('Alertas:',e.message);}
+  }
   async function applyBootstrap(data){
     if(data.estado==='pendente'){identity=null;definition=null;forms=[];typeList.replaceChildren();accountText.textContent='Aguardando confirmação do e-mail';setConn('pendente',data.usuario);startPoll();return;}
     if(data.estado!=='ativo'||!data.usuario?.id||!Array.isArray(data.formularios))throw new Error('Resposta de bootstrap inválida.');
@@ -362,7 +407,7 @@
   async function disconnect(confirmFirst=true){
     if(busy)return;
     if(confirmFirst&&!window.confirm('Desconectar este navegador do ToolboxWaze? Você precisará confirmar o e-mail novamente.'))return;
-    busy=true;updateBusy();stopPoll();clearTimeout(saveTimer);
+    busy=true;updateBusy();stopPoll();stopAlertPoll();clearTimeout(saveTimer);
     try{if(token)await api('POST','/dispositivo/revogar');}catch(e){warn('Revogação no servidor falhou:',e.message);}
     await dropToken();setConn('registro');settings.hidden=true;syncSteps();notice('Desconectado deste navegador.');busy=false;updateBusy();
   }
