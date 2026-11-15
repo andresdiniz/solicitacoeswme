@@ -2,10 +2,12 @@
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
 // @version      4.0.3
+// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos e histórico com links.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
 // @supportURL   https://github.com/andresdiniz/ToolboxWaze/issues
-// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail (sem colar token), contexto SDK, formulários da API, anexos e rascunhos.
+// @updateURL    https://raw.githubusercontent.com/andresdiniz/ToolboxWaze/main/ToolboxWaze.user.js
+// @downloadURL  https://raw.githubusercontent.com/andresdiniz/ToolboxWaze/main/ToolboxWaze.user.js
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
 // @match        https://beta.waze.com/editor*
@@ -19,7 +21,6 @@
 // @connect      wazetoolbox.acheireviews.com.br
 // @run-at       document-idle
 // ==/UserScript==
-/* global unsafeWindow, GM_getValue, GM_setValue, GM_deleteValue, GM_xmlhttpRequest */
 
 (async function () {
   'use strict';
