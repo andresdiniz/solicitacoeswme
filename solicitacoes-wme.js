@@ -1,6 +1,3 @@
-Aqui está o código completo da **v4.1.0**, com a correção do botão **Voltar** (`renderMine()`). Não foi publicado no GitHub; este é o conteúdo para você revisar/colar no arquivo `public/userscripts/toolboxwaze-solicitacoes.user.js`.
-
-```javascript
 // ==UserScript==
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
@@ -149,7 +146,7 @@ Aqui está o código completo da **v4.1.0**, com a correção do botão **Voltar
         headers:{Accept:'application/json','X-API-TOKEN':credential,...(body&&!multipart?{'Content-Type':'application/json'}:{})},
         data:body?(multipart?body:JSON.stringify(body)):undefined,
         onload:r=>{log('HTTP',r.status,path,Math.round(performance.now()-start)+'ms');let data=null;try{data=JSON.parse(r.responseText);}catch{}
-          const type=(/content-type:\s*([^\r\n;]+)/i.exec(r.responseHeaders||'')||[]) [w3](http://www.w3.org/2000/svg)?.trim()||'';
+          const type=(/content-type:\s*([^\r\n;]+)/i.exec(r.responseHeaders||'')||[])[1]?.trim()||'';
           if(r.status<200||r.status>=300){const e=new Error(data?.message||data?.error||(data&&typeof data==='object'?'HTTP '+r.status:nonJsonMessage(r,type,path)));e.status=r.status;e.codigo=data?.codigo||'';e.errors=data?.errors||{};e.data=data||{};reject(e);return;}
           if(!data||typeof data!=='object'){const e=new Error(nonJsonMessage(r,type,path));e.uncertain=true;e.status=r.status;reject(e);return;}resolve(data);},
         onerror:()=>reject(Object.assign(new Error('Falha de rede. O servidor pode ter recebido o envio.'),{uncertain:true})),
@@ -522,4 +519,3 @@ Aqui está o código completo da **v4.1.0**, com a correção do botão **Voltar
     sdk.Events.on({eventName:'wme-selection-changed',eventHandler:()=>{const n=selection().length;fab.textContent='Toolbox · Solicitações'+(n?' ('+n+')':'');if(!overlay.hidden)contextNotice.textContent='A seleção pode ter mudado. Use Atualizar para recapturar.';}});log('SDK pronto');
   }catch(e){summary.textContent='SDK indisponível. Preenchimento manual disponível.';warn(e.message);}
 })();
-```
