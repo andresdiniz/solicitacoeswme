@@ -26,7 +26,7 @@
 (async function () {
   'use strict';
   if (window.top !== window.self) return;
-  const VERSION='4.0.0', BASE='https://wazetoolbox.acheireviews.com.br';
+  const VERSION='4.0.1', BASE='https://wazetoolbox.acheireviews.com.br';
   const API=BASE+'/api/wme', PREFIX='[ToolboxWaze]', PAGE=typeof unsafeWindow==='undefined'?window:unsafeWindow;
   const log=(...a)=>console.info(PREFIX,...a), warn=(...a)=>console.warn(PREFIX,...a);
   const store={get:async(k,d=null)=>await GM_getValue(k,d),set:async(k,v)=>await GM_setValue(k,v),del:async k=>await GM_deleteValue(k)};
