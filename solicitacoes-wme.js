@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.14
+// @version      4.2.5.15
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.14';
+  const VERSION = '4.2.5.15';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,7 +194,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.14',
+        version: '4.2.5.15',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -453,128 +453,74 @@
   `;
 
   const permalinkLauncher = (() => {
-    let anchor=null,slot=null,slotOwner=null,task=null,scan=null,scanEnd=null;
-    let mutation=null,resize=null,scope=null,mode='initializing';
-    const gap=5;
-    function parent(n){return n.parentElement || n.getRootNode()?.host || null;}
-    function nodes(r=document){
-      const result=[];
-      for(const n of r.querySelectorAll('*')){
-        if(n===host || n.id==='tw-forms-reserved-slot') continue;
-        result.push(n);if(n.shadowRoot) result.push(...nodes(n.shadowRoot));
+    const selector='.bottom.overlay-buttons-container';
+    const launcherHost=document.createElement('div');
+    launcherHost.id='tw-forms-inline-launcher';
+    launcherHost.style.cssText='display:flex;position:relative;flex:0 0 auto;align-items:center;justify-content:center;align-self:center;box-sizing:border-box;margin:3px 0 7px;padding:0;width:36px;height:34px;min-height:34px;';
+    const launcherRoot=launcherHost.attachShadow({mode:'open'});
+    const style=document.createElement('style');
+    style.textContent=`
+      :host{color:#34434a;font:13px/1.4 system-ui,sans-serif}
+      *{box-sizing:border-box}
+      button{font:inherit;cursor:pointer}
+      .fab{all:unset;box-sizing:border-box;position:relative;display:flex;align-items:center;
+        justify-content:center;width:34px;height:32px;min-width:32px;cursor:pointer;
+        border:1px solid transparent;border-radius:8px;color:#34434a;background:transparent;
+        touch-action:manipulation;overflow:visible}
+      .fab:hover{background:#34434a14}
+      .fab:focus-visible{outline:2px solid #526c78;outline-offset:2px}
+      .fab>svg{display:block;width:21px;height:21px;flex:none}
+      .fab-dot{position:absolute;width:6px;height:6px;right:2px;bottom:2px;border-radius:50%;
+        background:#edbb38;box-shadow:0 0 0 2px #f5f7f8;pointer-events:none}
+      .fab-dot.ok{background:#35bd78}
+      .fab-dot.pending{background:#edbb38}
+      .fab-dot.error{background:#e06464}
+      .fab-label{position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);
+        display:block;width:max-content;max-width:min(270px,calc(100vw - 90px));padding:8px 11px;
+        border-radius:7px;background:#34434a;color:#fff;font:12px/1.5 system-ui,sans-serif;
+        box-shadow:0 3px 12px #0003;opacity:0;visibility:hidden;pointer-events:none;z-index:100}
+      .fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1;visibility:visible}
+    `;
+    launcherRoot.append(style,fab);
+    fab.removeAttribute('data-anchor-missing');
+    fab.style.removeProperty('width');fab.style.removeProperty('height');
+    fab.dataset.positionMode='waiting-for-container';
+    let container=null,task=null,observer=null;
+    function find(rootNode=document){
+      const direct=rootNode.querySelector(selector);
+      if(direct) return direct;
+      for(const node of rootNode.querySelectorAll('*')) {
+        if(node===host || node===launcherHost) continue;
+        if(node.shadowRoot){const found=find(node.shadowRoot);if(found)return found;}
       }
-      return result;
+      return null;
     }
-    function label(n){return [...(n.attributes || [])].filter(a=>/^(id|class|title|aria-label|data-testid|data-tooltip|icon|icon-name|name|href|xlink:href)$/.test(a.name)).map(a=>a.value).join(' ');}
-    function control(n){
-      let result=n;
-      for(let p=n,i=0;p && i<5;p=parent(p),i++){
-        if(p.matches?.('button,a,[role="button"],wz-button,wz-icon-button')) result=p;
-        if(p!==n && !p.matches?.('button,a,[role="button"],wz-button,wz-icon-button,span,svg,i,wz-icon')) break;
+    function mount(){
+      task=null;
+      const target=find();
+      if(!target) {
+        fab.dataset.positionMode='waiting-for-container';
+        return false;
       }
-      return result;
+      container=target;
+      if(launcherHost.parentNode!==target) target.prepend(launcherHost);
+      fab.dataset.positionMode='inside-bottom-controls';
+      return true;
     }
-    function visible(n){
-      const r=n.getBoundingClientRect();
-      return r.width>=12 && r.height>=12 && r.width<=110 && r.height<=95 && r.left>innerWidth*.6 && r.top>35 && r.bottom<innerHeight && getComputedStyle(n).visibility!=='hidden';
-    }
-    function find(list){
-      const found=new Map();
-      for(const n of list){
-        const l=label(n);
-        const exact=/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(l);
-        const icon=n.matches('i,svg,use,wz-icon,[icon],[icon-name],[data-icon]') && /(?:^|[\s_#:/-])(?:link|chain|insert_link)(?:$|[\s_#:/-])/i.test(l);
-        if(!exact && !icon) continue;
-        const c=control(n);if(!visible(c)) continue;
-        found.set(c,Math.max(found.get(c)||0,exact?1000:100));
-      }
-      return [...found].sort((a,b)=>b[1]-a[1])[0]?.[0] || null;
-    }
-    function schedule(){
-      if(task!==null || document.hidden) return;
-      task=setTimeout(()=>{task=null;place();},180);
-    }
-    function reserve(c,size){
-      if(slot?.isConnected && slotOwner===c) return true;
-      slot?.remove();slot=null;slotOwner=null;
-      // Reserve only in a real narrow vertical layout; never insert into a row.
-      const p=c.parentElement;
-      if(!p) return false;
-      const style=getComputedStyle(p),r=p.getBoundingClientRect();
-      const vertical=(style.display.includes('flex') && style.flexDirection==='column') ||
-        (style.display==='block' && r.width<=100);
-      if(!vertical || r.width>160 || p===document.body) return false;
-      slot=document.createElement('div');slot.id='tw-forms-reserved-slot';
-      slot.setAttribute('aria-hidden','true');
-      slot.style.cssText='display:block;box-sizing:border-box;position:relative;flex:0 0 auto;align-self:center;pointer-events:none;';
-      slot.style.width=size+'px';slot.style.height=(size+gap*2)+'px';
-      c.after(slot);slotOwner=c;return true;
-    }
-    function watch(c){
-      const p=parent(c)||c;
-      if(scope===p) return;
-      mutation?.disconnect();resize?.disconnect();scope=p;
-      mutation=new MutationObserver(records=>{
-        if(records.every(r=>r.target===slot)) return;
-        schedule();
-      });
-      mutation.observe(p,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden']});
-      resize=new ResizeObserver(schedule);resize.observe(c);resize.observe(p);
-      if(parent(p)) resize.observe(parent(p));
-    }
-    function apply(x,y,size,newMode){
-      x=Math.max(5,Math.min(innerWidth-size-5,x));
-      host.style.setProperty('--tw-link-x',Math.round(x)+'px');
-      host.style.setProperty('--tw-link-y',Math.round(y)+'px');
-      fab.style.width=size+'px';fab.style.height=size+'px';
-      fab.dataset.positionMode=newMode;mode=newMode;
-      fab.removeAttribute('data-anchor-missing');
-    }
-    function place(){
-      const list=nodes();const next=find(list);
-      if(!next){
-        slot?.remove();slot=null;slotOwner=null;
-        // Never disappear: visible upper-right temporary access during discovery.
-        apply(innerWidth-52,190,28,'fallback');return false;
-      }
-      anchor=next;watch(anchor);
-      const ar=anchor.getBoundingClientRect();const size=innerHeight<650?26:28;
-      const reserved=reserve(anchor,size);
-      const obstacles=[];
-      for(const n of list){
-        if(!n.matches('button,a,[role="button"],wz-button,wz-icon-button,input,select')) continue;
-        const c=control(n);
-        if(c===anchor || c===host || !visible(c)) continue;
-        const r=c.getBoundingClientRect();
-        // Internal shadow buttons of the anchor aren't independent obstacles.
-        if(Math.abs(r.left-ar.left)<3 && Math.abs(r.top-ar.top)<3 && Math.abs(r.bottom-ar.bottom)<5) continue;
-        obstacles.push(r);
-      }
-      const x=ar.left+(ar.width-size)/2;
-      function free(y){return !obstacles.some(r=>r.right>x-3 && r.left<x+size+3 && r.bottom>y-3 && r.top<y+size+3);}
-      if(reserved && slot?.isConnected){
-        const sr=slot.getBoundingClientRect();const y=sr.top+gap;
-        if(y>=ar.bottom && y+size<innerHeight-8 && free(y)) {apply(x,y,size,'reserved-below-permalink');return true;}
-      }
-      // Accept the first genuine gap below permalink; no arbitrary 48px cutoff.
-      for(let y=ar.bottom+gap;y+size<innerHeight-12;y+=2){
-        if(free(y)){apply(x,y,size,'below-permalink');return true;}
-      }
-      apply(innerWidth-52,Math.max(50,ar.bottom+gap),26,'fallback');
-      return false;
-    }
-    function start(){
-      const ok=place();scan?.disconnect();clearTimeout(scanEnd);
-      if(ok) return;
-      scan=new MutationObserver(schedule);scan.observe(document.body,{childList:true,subtree:true});
-      scanEnd=setTimeout(()=>{scan?.disconnect();scan=null;},20000);
-    }
-    addEventListener('resize',schedule,{passive:true});
-    addEventListener('scroll',schedule,{capture:true,passive:true});
-    document.addEventListener('fullscreenchange',schedule);
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden)schedule();});
-    start();
-    return {refresh:start,diagnostic:()=>({mode,anchor:anchor?.outerHTML?.slice(0,1200)||null,reserved:Boolean(slot?.isConnected)})};
+    function schedule(){if(task===null) task=setTimeout(mount,200);}
+    // No periodic coordinate calculations. Reattach only when the actual DOM
+    // container is removed/replaced, such as when WME Studio switches layouts.
+    observer=new MutationObserver(records=>{
+      if(launcherHost.isConnected && container?.isConnected && launcherHost.parentNode===container) return;
+      if(records.some(r=>r.addedNodes.length || r.removedNodes.length)) schedule();
+    });
+    observer.observe(document.body,{subtree:true,childList:true});
+    mount();
+    return {
+      refresh:mount,
+      diagnostic:()=>({mode:fab.dataset.positionMode,selector,mounted:launcherHost.isConnected,
+        parent:launcherHost.parentElement?.className || null})
+    };
   })();
 
   const overlay = el('div', null, root, 'overlay');
