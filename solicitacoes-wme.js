@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.10
+// @version      4.2.5.11
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -21,6 +21,7 @@
 // @grant        GM_xmlhttpRequest
 // @require      https://update.greasyfork.org/scripts/602363/1986340/WME%20Alert%20System.js
 // @connect      wazetoolbox.acheireviews.com.br
+// @connect      www.google-analytics.com
 // @run-at       document-idle
 // ==/UserScript==
 
@@ -30,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.10';
+  const VERSION = '4.2.5.11';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -193,7 +194,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.10',
+        version: '4.2.5.11',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -419,46 +420,117 @@
   fab.type = 'button';
   const fabDot = el('span', null, fab, 'fab-dot pending');
   const fabLabel = el('span', 'Formulário de solicitações BR', fab, 'fab-label');
-  // Stable viewport position, independent of the editor toolbar / WME Studio.
-  const LAUNCHER_POSITION = { right: 16, bottom: 96 };
-  host.style.setProperty('--tw-launcher-right', LAUNCHER_POSITION.right + 'px');
-  host.style.setProperty('--tw-launcher-bottom', LAUNCHER_POSITION.bottom + 'px');
   fab.title = 'Formulário de solicitações BR';
   fab.setAttribute('aria-label', fab.title);
-  fab.setAttribute('aria-haspopup', 'dialog');
-  fab.setAttribute('aria-expanded', 'false');
-  fabLabel.id = 'tw-forms-tooltip';
-  fabLabel.setAttribute('role', 'tooltip');
-  fab.setAttribute('aria-describedby', fabLabel.id);
-  fabDot.setAttribute('aria-hidden', 'true');
-  const formsIcon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  for (const [key, value] of Object.entries({viewBox:'0 0 24 24', width:'21', height:'21', fill:'none', stroke:'currentColor', 'stroke-width':'1.65', 'stroke-linecap':'round', 'stroke-linejoin':'round', 'aria-hidden':'true'})) {
-    formsIcon.setAttribute(key, value);
-  }
+  fab.setAttribute('aria-haspopup','dialog');
+  fabLabel.id = 'tw-forms-launcher-tooltip';
+  fabLabel.setAttribute('role','tooltip');
+  fab.setAttribute('aria-describedby',fabLabel.id);
+  fabDot.setAttribute('aria-hidden','true');
+  const formsIcon = document.createElementNS('http://www.w3.org/2000/svg','svg');
+  for (const [k,v] of Object.entries({viewBox:'0 0 24 24',width:'21',height:'21',fill:'none',stroke:'currentColor','stroke-width':'1.65','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) formsIcon.setAttribute(k,v);
   for (const d of ['M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2','M9 2h6v4H9z','m7 11 1 1 2-2','M13 11h4','m7 17 1 1 2-2','M13 17h4']) {
-    const path = document.createElementNS(formsIcon.namespaceURI, 'path');
-    path.setAttribute('d', d);
-    formsIcon.append(path);
+    const path = document.createElementNS(formsIcon.namespaceURI,'path');path.setAttribute('d',d);formsIcon.append(path);
   }
   fab.prepend(formsIcon);
+  // Stay hidden until the real permalink control is located; no zoom-area fallback.
+  fab.setAttribute('data-anchor-missing','');
   css.textContent += `
-  .fab{position:fixed!important;top:auto!important;left:auto!important;
-    right:max(env(safe-area-inset-right,0px),var(--tw-launcher-right))!important;
-    bottom:max(env(safe-area-inset-bottom,0px),var(--tw-launcher-bottom))!important;
-    width:36px;height:36px;padding:0!important;display:flex;align-items:center;justify-content:center;
-    gap:0;border:1px solid #c5cfd3;border-radius:8px;background:#eef2f3;color:#34434a;
-    box-shadow:0 1px 4px #0002;overflow:visible}
-  .fab:hover{background:#dfe6e9;color:#26343b}
+  .fab{position:fixed!important;left:var(--tw-link-x,0px)!important;top:var(--tw-link-y,0px)!important;
+    right:auto!important;bottom:auto!important;width:36px;height:28px;padding:0!important;
+    display:flex;align-items:center;justify-content:center;gap:0;border:1px solid #d2d9dc;
+    border-radius:16px;background:#fff;color:#34434a;box-shadow:0 1px 4px #0002;overflow:visible}
+  .fab[data-anchor-missing]{display:none!important}
+  .fab:hover{background:#e8edef;color:#26343b}
   .fab:focus-visible{outline:2px solid #526c78;outline-offset:3px}
-  .fab .fab-dot{position:absolute;right:3px;bottom:3px;width:6px;height:6px;box-shadow:0 0 0 2px #eef2f3}
-  .fab .fab-dot.ok{background:#35bd78}
-  .fab .fab-dot.pending{background:#edbb38}
+  .fab .fab-dot{position:absolute;right:3px;bottom:3px;width:6px;height:6px;box-shadow:0 0 0 2px #fff}
+  .fab .fab-dot.ok{background:#35bd78}.fab .fab-dot.pending{background:#edbb38}
   .fab .fab-label{position:absolute;top:50%;right:calc(100% + 10px);transform:translateY(-50%);
-    width:max-content;max-width:min(270px,calc(100vw - 78px));padding:8px 11px;
-    border-radius:7px;background:#34434a;color:#fff;font:12px/1.5 system-ui,sans-serif;
-    box-shadow:0 3px 12px #0003;opacity:0;visibility:hidden;pointer-events:none}
+    width:max-content;max-width:min(270px,calc(100vw - 78px));padding:8px 11px;border-radius:7px;
+    background:#34434a;color:#fff;font:12px/1.5 system-ui,sans-serif;box-shadow:0 3px 12px #0003;
+    opacity:0;visibility:hidden;pointer-events:none}
   .fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1;visibility:visible}
   `;
+
+  const permalinkLauncher = (() => {
+    let anchor=null, frame=null, pendingTimer=null, discovery=null, discoveryTimeout=null;
+    let localObserver=null, sizeObserver=null;
+    const gap=7;
+    function elements(rootNode=document) {
+      const found=[...rootNode.querySelectorAll('*')];
+      for (const node of [...found]) {
+        if (node===host) continue;
+        if (node.shadowRoot) found.push(...elements(node.shadowRoot));
+      }
+      return found;
+    }
+    function findAnchor() {
+      const candidates=[];
+      for (const node of elements()) {
+        if (node===host || root.contains(node)) continue;
+        const label=[node.id,node.getAttribute('class'),node.getAttribute('title'),node.getAttribute('aria-label'),node.getAttribute('data-testid'),node.getAttribute('data-tooltip')].filter(Boolean).join(' ');
+        if (!/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(label)) continue;
+        const control=node.closest('button,a,[role="button"],wz-button') || node;
+        const r=control.getBoundingClientRect();
+        if (r.width<15 || r.width>100 || r.height<15 || r.height>80 || r.left<innerWidth*.5 || r.bottom<=0 || r.bottom>innerHeight) continue;
+        if (getComputedStyle(control).visibility==='hidden') continue;
+        candidates.push(control);
+      }
+      return candidates[0] || null;
+    }
+    function place() {
+      frame=null;
+      if (!anchor?.isConnected) {
+        fab.setAttribute('data-anchor-missing','');
+        return;
+      }
+      const r=anchor.getBoundingClientRect();
+      if (!r.width || !r.height) {fab.setAttribute('data-anchor-missing','');return;}
+      const x=Math.max(4,Math.min(innerWidth-40,r.left+(r.width-36)/2));
+      const y=r.bottom+gap;
+      if (y+28>innerHeight) {fab.setAttribute('data-anchor-missing','');return;}
+      host.style.setProperty('--tw-link-x',Math.round(x)+'px');
+      host.style.setProperty('--tw-link-y',Math.round(y)+'px');
+      fab.removeAttribute('data-anchor-missing');
+    }
+    function schedule() {if(frame===null) frame=requestAnimationFrame(place);}
+    function attach(node) {
+      anchor=node;localObserver?.disconnect();sizeObserver?.disconnect();
+      sizeObserver=new ResizeObserver(schedule);sizeObserver.observe(node);
+      let parent=node.parentElement;
+      for(let i=0;parent && i<3;i++,parent=parent.parentElement) sizeObserver.observe(parent);
+      localObserver=new MutationObserver(schedule);
+      if(node.parentElement) localObserver.observe(node.parentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden']});
+      schedule();
+    }
+    function discover() {
+      clearTimeout(pendingTimer);pendingTimer=null;
+      const node=findAnchor();
+      if(node) {
+        attach(node);discovery?.disconnect();discovery=null;clearTimeout(discoveryTimeout);return true;
+      }
+      return false;
+    }
+    function start() {
+      if(discover()) return;
+      discovery?.disconnect();
+      discovery=new MutationObserver(()=>{
+        if(pendingTimer!==null) return;
+        pendingTimer=setTimeout(discover,400);
+      });
+      discovery.observe(document.body,{subtree:true,childList:true});
+      clearTimeout(discoveryTimeout);
+      discoveryTimeout=setTimeout(()=>{
+        discovery?.disconnect();discovery=null;clearTimeout(pendingTimer);pendingTimer=null;
+        if(!anchor) warn('Ícone oculto: controle de permalink não identificado. Envie o HTML do botão de link para ajustar o seletor.');
+      },30000);
+    }
+    addEventListener('resize',()=>{if(anchor?.isConnected) schedule();else start();},{passive:true});
+    addEventListener('scroll',schedule,{passive:true,capture:true});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(anchor?.isConnected)schedule();else start();}});
+    start();
+    return {refresh:start};
+  })();
 
 
   const overlay = el('div', null, root, 'overlay');
@@ -2416,7 +2488,6 @@
     previousFocus = document.activeElement;
     modalOpen = true;
     overlay.hidden = false;
-    fab.setAttribute('aria-expanded', 'true');
 
     trackEvent('modal_open', {
       connection_state: conn,
@@ -2445,7 +2516,6 @@
     if (dirty) scheduleSave();
 
     overlay.hidden = true;
-    fab.setAttribute('aria-expanded', 'false');
     modalOpen = false;
     clearTimeout(cooldownTick);
     cooldownTick = null;
@@ -2689,6 +2759,7 @@
       }
     });
 
+    permalinkLauncher.refresh();
     log('SDK pronto');
   } catch (error) {
     summary.textContent = 'SDK indisponível. Preenchimento manual disponível.';
