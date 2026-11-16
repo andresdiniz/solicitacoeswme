@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.15
+// @version      4.2.5.16
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.15';
+  const VERSION = '4.2.5.16';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,7 +194,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.15',
+        version: '4.2.5.16',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -456,71 +456,67 @@
     const selector='.bottom.overlay-buttons-container';
     const launcherHost=document.createElement('div');
     launcherHost.id='tw-forms-inline-launcher';
-    launcherHost.style.cssText='display:flex;position:relative;flex:0 0 auto;align-items:center;justify-content:center;align-self:center;box-sizing:border-box;margin:3px 0 7px;padding:0;width:36px;height:34px;min-height:34px;';
+    launcherHost.style.cssText='display:flex!important;position:relative!important;flex:0 0 auto!important;align-items:center!important;justify-content:center!important;align-self:center!important;box-sizing:border-box!important;margin:4px 0 8px!important;padding:0!important;width:36px!important;height:34px!important;min-height:34px!important;opacity:1!important;visibility:visible!important;';
     const launcherRoot=launcherHost.attachShadow({mode:'open'});
     const style=document.createElement('style');
     style.textContent=`
-      :host{color:#34434a;font:13px/1.4 system-ui,sans-serif}
+      :host{color:#000;font:13px/1.4 system-ui,sans-serif;opacity:1;visibility:visible}
       *{box-sizing:border-box}
-      button{font:inherit;cursor:pointer}
-      .fab{all:unset;box-sizing:border-box;position:relative;display:flex;align-items:center;
-        justify-content:center;width:34px;height:32px;min-width:32px;cursor:pointer;
-        border:1px solid transparent;border-radius:8px;color:#34434a;background:transparent;
-        touch-action:manipulation;overflow:visible}
-      .fab:hover{background:#34434a14}
-      .fab:focus-visible{outline:2px solid #526c78;outline-offset:2px}
-      .fab>svg{display:block;width:21px;height:21px;flex:none}
-      .fab-dot{position:absolute;width:6px;height:6px;right:2px;bottom:2px;border-radius:50%;
-        background:#edbb38;box-shadow:0 0 0 2px #f5f7f8;pointer-events:none}
-      .fab-dot.ok{background:#35bd78}
-      .fab-dot.pending{background:#edbb38}
-      .fab-dot.error{background:#e06464}
-      .fab-label{position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);
-        display:block;width:max-content;max-width:min(270px,calc(100vw - 90px));padding:8px 11px;
-        border-radius:7px;background:#34434a;color:#fff;font:12px/1.5 system-ui,sans-serif;
-        box-shadow:0 3px 12px #0003;opacity:0;visibility:hidden;pointer-events:none;z-index:100}
-      .fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1;visibility:visible}
+      .fab{all:unset;box-sizing:border-box!important;position:relative!important;display:flex!important;
+        align-items:center!important;justify-content:center!important;width:36px!important;height:34px!important;
+        min-width:36px!important;min-height:34px!important;padding:0!important;margin:0!important;
+        border:1.5px solid #000!important;border-radius:9px!important;background:#fff!important;
+        background-image:none!important;color:#000!important;opacity:1!important;visibility:visible!important;
+        box-shadow:0 1px 4px #0005!important;cursor:pointer;touch-action:manipulation;overflow:visible!important}
+      .fab:hover{background:#fff!important;box-shadow:0 0 0 2px #0003!important}
+      .fab:focus-visible{outline:2px solid #000!important;outline-offset:3px!important}
+      .fab>svg{display:block!important;visibility:visible!important;opacity:1!important;
+        width:22px!important;height:22px!important;flex:0 0 auto!important;color:#000!important;
+        fill:none!important;stroke:#000!important;stroke-width:1.9!important}
+      .fab>svg path{fill:none!important;stroke:#000!important;stroke-width:1.9!important;
+        stroke-linecap:round!important;stroke-linejoin:round!important;opacity:1!important;visibility:visible!important}
+      .fab-dot{display:block!important;position:absolute!important;width:7px!important;height:7px!important;
+        right:2px!important;bottom:2px!important;border:1px solid #000!important;border-radius:50%!important;
+        background:#eab308!important;box-shadow:0 0 0 2px #fff!important;pointer-events:none}
+      .fab-dot.ok{background:#22c55e!important}
+      .fab-dot.pending{background:#eab308!important}
+      .fab-dot.error{background:#ef4444!important}
+      .fab-label{position:absolute!important;right:calc(100% + 10px)!important;top:50%!important;
+        transform:translateY(-50%)!important;display:block!important;width:max-content!important;
+        max-width:min(270px,calc(100vw - 90px));padding:8px 11px!important;border-radius:7px!important;
+        border:1px solid #000!important;background:#fff!important;color:#000!important;
+        font:12px/1.5 system-ui,sans-serif!important;box-shadow:0 2px 8px #0003;
+        opacity:0!important;visibility:hidden!important;pointer-events:none!important;z-index:100}
+      .fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1!important;visibility:visible!important}
     `;
     launcherRoot.append(style,fab);
     fab.removeAttribute('data-anchor-missing');
+    fab.removeAttribute('title');
     fab.style.removeProperty('width');fab.style.removeProperty('height');
     fab.dataset.positionMode='waiting-for-container';
-    let container=null,task=null,observer=null;
-    function find(rootNode=document){
-      const direct=rootNode.querySelector(selector);
-      if(direct) return direct;
-      for(const node of rootNode.querySelectorAll('*')) {
-        if(node===host || node===launcherHost) continue;
-        if(node.shadowRoot){const found=find(node.shadowRoot);if(found)return found;}
+    let container=null,task=null;
+    function find(r=document){
+      const direct=r.querySelector(selector);if(direct)return direct;
+      for(const n of r.querySelectorAll('*')){
+        if(n===host || n===launcherHost)continue;
+        if(n.shadowRoot){const match=find(n.shadowRoot);if(match)return match;}
       }
       return null;
     }
     function mount(){
-      task=null;
-      const target=find();
-      if(!target) {
-        fab.dataset.positionMode='waiting-for-container';
-        return false;
-      }
+      task=null;const target=find();
+      if(!target){fab.dataset.positionMode='waiting-for-container';return false;}
       container=target;
-      if(launcherHost.parentNode!==target) target.prepend(launcherHost);
-      fab.dataset.positionMode='inside-bottom-controls';
-      return true;
+      if(launcherHost.parentNode!==target)target.prepend(launcherHost);
+      fab.dataset.positionMode='inside-bottom-controls';return true;
     }
-    function schedule(){if(task===null) task=setTimeout(mount,200);}
-    // No periodic coordinate calculations. Reattach only when the actual DOM
-    // container is removed/replaced, such as when WME Studio switches layouts.
-    observer=new MutationObserver(records=>{
-      if(launcherHost.isConnected && container?.isConnected && launcherHost.parentNode===container) return;
-      if(records.some(r=>r.addedNodes.length || r.removedNodes.length)) schedule();
+    const observer=new MutationObserver(records=>{
+      if(launcherHost.isConnected && container?.isConnected && launcherHost.parentNode===container)return;
+      if(task===null && records.some(r=>r.addedNodes.length || r.removedNodes.length))task=setTimeout(mount,200);
     });
     observer.observe(document.body,{subtree:true,childList:true});
     mount();
-    return {
-      refresh:mount,
-      diagnostic:()=>({mode:fab.dataset.positionMode,selector,mounted:launcherHost.isConnected,
-        parent:launcherHost.parentElement?.className || null})
-    };
+    return {refresh:mount,diagnostic:()=>({mode:fab.dataset.positionMode,selector,mounted:launcherHost.isConnected,parent:launcherHost.parentElement?.className || null})};
   })();
 
   const overlay = el('div', null, root, 'overlay');
