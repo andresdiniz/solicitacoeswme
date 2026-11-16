@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.12
+// @version      4.2.5.13
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.12';
+  const VERSION = '4.2.5.13';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,7 +194,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.12',
+        version: '4.2.5.13',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -453,119 +453,127 @@
   `;
 
   const permalinkLauncher = (() => {
-    let anchor=null, frame=null, pendingTimer=null, discovery=null, discoveryTimeout=null;
-    let localObserver=null, sizeObserver=null;
-    const gap=7;
-    function elements(rootNode=document) {
-      const found=[...rootNode.querySelectorAll('*')];
-      for (const node of [...found]) {
-        if (node===host) continue;
-        if (node.shadowRoot) found.push(...elements(node.shadowRoot));
+    let anchor=null, pending=null, discovery=null, discoveryEnd=null;
+    let resize=null, changes=null, observedScope=null, lastWarning='';
+    function all(rootNode=document) {
+      const result=[];
+      for(const node of rootNode.querySelectorAll('*')) {
+        if(node===host) continue;
+        result.push(node);
+        if(node.shadowRoot) result.push(...all(node.shadowRoot));
       }
-      return found;
+      return result;
     }
-    function composedParent(node) {
-      return node.parentElement || node.getRootNode()?.host || null;
+    function parent(node) {return node.parentElement || node.getRootNode()?.host || null;}
+    function label(node) {
+      return [...(node.attributes || [])].filter(a=>/^(id|class|title|aria-label|data-testid|data-tooltip|icon|icon-name|name|href|xlink:href)$/.test(a.name))
+        .map(a=>a.value).join(' ');
     }
-    function controlLabel(node) {
-      return [...node.attributes || []].filter(a => /^(id|class|title|aria-label|name|data-.+|icon|icon-name)$/.test(a.name))
-        .map(a => a.value).join(' ');
+    function rect(node) {
+      const r=node.getBoundingClientRect();
+      if(r.width<12 || r.height<12 || r.width>110 || r.height>95 || r.left<innerWidth*.6 || r.top<35 || r.bottom>innerHeight) return null;
+      if(getComputedStyle(node).visibility==='hidden') return null;
+      return r;
     }
-    function findAnchor() {
-      const candidates=[];
-      for (const node of elements()) {
-        if (node===host || root.contains(node)) continue;
-        // Waze's internal button has generic classes. Inspect its composed
-        // ancestors and their light-DOM icons, not just the internal button.
-        if (!node.matches('button,a,[role="button"],wz-button,wz-icon-button')) continue;
-        let control=node;
-        const chain=[];
-        for(let n=node,i=0;n && i<4;n=composedParent(n),i++) {
-          chain.push(n);
-          if (n.matches?.('wz-button,wz-icon-button')) control=n;
-        }
-        const labels=chain.map(controlLabel);
-        for(const parent of chain.slice(0,3)) {
-          for(const icon of parent.querySelectorAll('i,svg,use,wz-icon,[slot],[icon],[icon-name],[data-icon]')) {
-            labels.push(controlLabel(icon));
-            labels.push(icon.getAttribute('href') || icon.getAttribute('xlink:href') || '');
-          }
-        }
-        const label=labels.join(' ');
-        const explicit=/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(label);
-        const linkIcon=/(?:^|[\s_#/-])(?:link|chain|insert_link)(?:$|[\s_#/-])/i.test(label);
-        if (!explicit && !linkIcon) continue;
-        const r=control.getBoundingClientRect();
-        if (r.width<15 || r.width>100 || r.height<15 || r.height>80 || r.left<innerWidth*.65 || r.top<45 || r.bottom>innerHeight-65) continue;
-        if (getComputedStyle(control).visibility==='hidden') continue;
-        candidates.push({control,score:(explicit?1000:100)+(r.right>innerWidth-120?50:0)-r.top/1000});
+    function outerControl(node) {
+      // Cross only the internal button's shadow boundary, not siblings' wrappers.
+      let candidate=node;
+      for(let p=node,i=0;p && i<5;p=parent(p),i++) {
+        if(p.matches?.('button,a,[role="button"],wz-button,wz-icon-button')) candidate=p;
+        if(p!==node && !p.matches?.('button,a,[role="button"],wz-button,wz-icon-button,span,svg,i,wz-icon')) break;
       }
-      candidates.sort((a,b)=>b.score-a.score);
-      return candidates[0]?.control || null;
+      return candidate;
     }
-    function showFallback() {
-      // Visible, fixed upper-right fallback, never in the lower zoom area.
-      host.style.setProperty('--tw-link-x',Math.max(4,innerWidth-56)+'px');
-      host.style.setProperty('--tw-link-y','190px');
-      fab.removeAttribute('data-anchor-missing');
-      fab.dataset.positionMode='fallback';
+    function findAnchor(nodes) {
+      const matches=new Map();
+      for(const node of nodes) {
+        // No descendant-of-parent search: that incorrectly picked adjacent controls.
+        const text=label(node);
+        const explicit=/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(text);
+        const icon=node.matches('i,svg,use,wz-icon,[icon],[icon-name],[data-icon]') &&
+          /(?:^|[\s_#:/-])(?:link|chain|insert_link)(?:$|[\s_#:/-])/i.test(text);
+        if(!explicit && !icon) continue;
+        const control=outerControl(node), r=rect(control);
+        if(!r) continue;
+        const score=(explicit?1000:100)+(r.right>innerWidth-130?30:0);
+        if(!matches.has(control) || matches.get(control)<score) matches.set(control,score);
+      }
+      return [...matches].sort((a,b)=>b[1]-a[1])[0]?.[0] || null;
+    }
+    function hide(reason) {
+      fab.setAttribute('data-anchor-missing','');
+      fab.dataset.positionMode=reason;
+      if(reason!==lastWarning) {lastWarning=reason;warn('Posição do ícone:',reason);}
+    }
+    function schedule() {
+      if(document.hidden || pending!==null) return;
+      pending=setTimeout(()=>{pending=null;place();},180);
+    }
+    function observe(node) {
+      let scope=node;
+      for(let i=0;i<3 && parent(scope);i++) {
+        const next=parent(scope), r=next.getBoundingClientRect();
+        if(r.width>240 || r.height>innerHeight*.95) break;
+        scope=next;
+      }
+      if(observedScope===scope) return;
+      changes?.disconnect();resize?.disconnect();observedScope=scope;
+      resize=new ResizeObserver(schedule);
+      resize.observe(node);resize.observe(scope);
+      const outer=parent(scope);if(outer) resize.observe(outer);
+      changes=new MutationObserver(schedule);
+      changes.observe(scope,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden','aria-label']});
     }
     function place() {
-      frame=null;
-      if (!anchor?.isConnected) {
-        showFallback();
-        return;
+      const nodes=all();
+      anchor=findAnchor(nodes);
+      if(!anchor) {hide('permalink-nao-identificado');return false;}
+      observe(anchor);
+      const ar=anchor.getBoundingClientRect();
+      const size=Math.min(36,Math.max(28,ar.width));
+      const h=Math.min(32,Math.max(26,ar.height));
+      const x=Math.max(5,Math.min(innerWidth-size-5,ar.left+(ar.width-size)/2));
+      const blockers=[];
+      for(const node of nodes) {
+        if(!node.matches('button,a,[role="button"],wz-button,wz-icon-button,input,select')) continue;
+        const control=outerControl(node);
+        if(control===anchor || control.contains(anchor) || anchor.contains(control)) continue;
+        const r=rect(control);
+        if(r && r.right>x-4 && r.left<x+size+4 && r.bottom>ar.bottom+1) blockers.push(r);
       }
-      const r=anchor.getBoundingClientRect();
-      if (!r.width || !r.height) {showFallback();return;}
-      const x=Math.max(4,Math.min(innerWidth-40,r.left+(r.width-36)/2));
-      const y=r.bottom+gap;
-      if (y+28>innerHeight) {showFallback();return;}
+      // Search only the short slot immediately below permalink, not the zoom area.
+      const first=ar.bottom+6;
+      const limit=Math.min(innerHeight-h-8,first+48);
+      let y=null;
+      for(let top=first;top<=limit;top+=2) {
+        if(blockers.some(r=>r.top<top+h+5 && r.bottom>top-5)) continue;
+        const hit=document.elementFromPoint(x+size/2,top+h/2);
+        const interactive=hit?.closest?.('button,a,[role="button"],wz-button,wz-icon-button,input,select');
+        if(interactive && interactive!==host && interactive!==anchor) continue;
+        y=top;break;
+      }
+      if(y===null) {hide('sem-espaco-abaixo-do-permalink');return false;}
       host.style.setProperty('--tw-link-x',Math.round(x)+'px');
       host.style.setProperty('--tw-link-y',Math.round(y)+'px');
-      fab.removeAttribute('data-anchor-missing');
-      fab.dataset.positionMode='permalink';
-    }
-    function schedule() {if(frame===null) frame=requestAnimationFrame(place);}
-    function attach(node) {
-      anchor=node;localObserver?.disconnect();sizeObserver?.disconnect();
-      sizeObserver=new ResizeObserver(schedule);sizeObserver.observe(node);
-      let parent=node.parentElement;
-      for(let i=0;parent && i<3;i++,parent=parent.parentElement) sizeObserver.observe(parent);
-      localObserver=new MutationObserver(schedule);
-      if(node.parentElement) localObserver.observe(node.parentElement,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden']});
-      schedule();
-    }
-    function discover() {
-      clearTimeout(pendingTimer);pendingTimer=null;
-      const node=findAnchor();
-      if(node) {
-        attach(node);discovery?.disconnect();discovery=null;clearTimeout(discoveryTimeout);return true;
-      }
-      showFallback();
-      return false;
+      fab.style.width=size+'px';fab.style.height=h+'px';
+      fab.dataset.positionMode='permalink';fab.removeAttribute('data-anchor-missing');
+      lastWarning='';
+      return true;
     }
     function start() {
-      if(discover()) return;
-      discovery?.disconnect();
-      discovery=new MutationObserver(()=>{
-        if(pendingTimer!==null) return;
-        pendingTimer=setTimeout(discover,400);
-      });
-      discovery.observe(document.body,{subtree:true,childList:true});
-      clearTimeout(discoveryTimeout);
-      discoveryTimeout=setTimeout(()=>{
-        discovery?.disconnect();discovery=null;clearTimeout(pendingTimer);pendingTimer=null;
-        if(!anchor) warn('Usando posição alternativa: permalink não identificado. Envie o HTML do componente wz-button externo e do ícone, não apenas do button interno.');
-      },30000);
+      if(place()) {discovery?.disconnect();clearTimeout(discoveryEnd);return;}
+      discovery?.disconnect();clearTimeout(discoveryEnd);
+      discovery=new MutationObserver(schedule);
+      discovery.observe(document.body,{childList:true,subtree:true});
+      discoveryEnd=setTimeout(()=>{discovery?.disconnect();discovery=null;},20000);
     }
-    addEventListener('resize',()=>{if(anchor?.isConnected) schedule();else start();},{passive:true});
-    addEventListener('scroll',schedule,{passive:true,capture:true});
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden){if(anchor?.isConnected)schedule();else start();}});
+    addEventListener('resize',schedule,{passive:true});
+    addEventListener('scroll',schedule,{capture:true,passive:true});
+    document.addEventListener('fullscreenchange',schedule);
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden) schedule();});
     start();
-    return {refresh:start};
+    return {refresh:start, diagnostic:()=>({mode:fab.dataset.positionMode,anchor:anchor?.outerHTML?.slice(0,1200) || null})};
   })();
-
 
   const overlay = el('div', null, root, 'overlay');
   overlay.hidden = true;
@@ -2719,7 +2727,7 @@
   PAGE.twDiagnostico = () => {
     const diagnostics = {
       version: VERSION,
-      launcherPosition: fab.dataset.positionMode || 'initializing',
+      launcher: permalinkLauncher.diagnostic(),
       sdk: Boolean(sdk),
       conn,
       connected: Boolean(identity),
