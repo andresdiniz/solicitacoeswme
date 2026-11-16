@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.8
+// @version      4.2.5.9
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,7 +30,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.8';
+  const VERSION = '4.2.5.9';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -193,7 +193,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.8',
+        version: '4.2.5.9',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -419,91 +419,129 @@
   fab.type = 'button';
   const fabDot = el('span', null, fab, 'fab-dot pending');
   const fabLabel = el('span', 'Formulário de solicitações BR', fab, 'fab-label');
-  fab.setAttribute('aria-label', 'Formulário de solicitações BR');
-  fab.setAttribute('aria-haspopup', 'dialog');
-  fab.setAttribute('aria-expanded', 'false');
   fab.title = 'Formulário de solicitações BR';
+  fab.setAttribute('aria-label', fab.title);
+  fab.setAttribute('aria-haspopup', 'dialog');
+  fabLabel.id = 'tw-forms-tooltip';
   fabLabel.setAttribute('role', 'tooltip');
-  fabLabel.id = 'tw-launcher-tooltip';
   fab.setAttribute('aria-describedby', fabLabel.id);
   fabDot.setAttribute('aria-hidden', 'true');
-
-  const icon = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
-  icon.setAttribute('viewBox', '0 0 24 24');
-  icon.setAttribute('width', '22');
-  icon.setAttribute('height', '22');
-  icon.setAttribute('fill', 'none');
-  icon.setAttribute('stroke', 'currentColor');
-  icon.setAttribute('stroke-width', '1.7');
-  icon.setAttribute('stroke-linecap', 'round');
-  icon.setAttribute('stroke-linejoin', 'round');
-  icon.setAttribute('aria-hidden', 'true');
-  for (const d of [
-    'M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2',
-    'M9 2h6v4H9z',
-    'm7 11 1 1 2-2', 'M13 11h4',
-    'm7 17 1 1 2-2', 'M13 17h4'
-  ]) {
-    const path = document.createElementNS('http://www.w3.org/2000/svg', 'path');
-    path.setAttribute('d', d);
-    icon.append(path);
+  const svg = document.createElementNS('http://www.w3.org/2000/svg', 'svg');
+  for (const [k,v] of Object.entries({viewBox:'0 0 24 24',width:'21',height:'21',fill:'none',stroke:'currentColor','stroke-width':'1.7','stroke-linecap':'round','stroke-linejoin':'round','aria-hidden':'true'})) svg.setAttribute(k,v);
+  for (const d of ['M8 4H6a2 2 0 0 0-2 2v14a2 2 0 0 0 2 2h12a2 2 0 0 0 2-2V6a2 2 0 0 0-2-2h-2','M9 2h6v4H9z','m7 11 1 1 2-2','M13 11h4','m7 17 1 1 2-2','M13 17h4']) {
+    const path = document.createElementNS(svg.namespaceURI,'path'); path.setAttribute('d',d); svg.append(path);
   }
-  fab.prepend(icon);
-
+  fab.prepend(svg);
   css.textContent += `
-  .fab{position:fixed!important;top:52px!important;right:16px!important;bottom:auto!important;
-    width:38px;height:38px;padding:0!important;display:flex;align-items:center;justify-content:center;
-    border-radius:10px;background:#fff;color:#176d4c;border:1px solid #dce9e1;
-    box-shadow:0 2px 8px #0002;gap:0;overflow:visible}
+  .fab{position:fixed!important;left:var(--tw-launcher-x,auto)!important;top:var(--tw-launcher-y,48px)!important;
+    right:var(--tw-launcher-right,12px)!important;bottom:auto!important;width:32px;height:30px;padding:0!important;
+    display:flex;align-items:center;justify-content:center;gap:0;border-radius:7px;border:1px solid #dce9e1;
+    background:#fff;color:#176d4c;box-shadow:none;overflow:visible}
   .fab:hover{background:#edf7f1}
-  .fab .fab-dot{position:absolute;right:3px;bottom:3px;width:7px;height:7px;box-shadow:0 0 0 2px #fff}
-  .fab .fab-label{display:block;position:absolute;top:calc(100% + 9px);right:0;
-    min-width:210px;max-width:min(290px,85vw);padding:8px 11px;border-radius:7px;
-    background:#16342b;color:#fff;font:12px/1.4 system-ui,sans-serif;text-align:left;
-    box-shadow:0 4px 14px #0003;opacity:0;visibility:hidden;pointer-events:none;
-    transform:translateY(-3px);transition:opacity .12s,transform .12s,visibility .12s}
-  .fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1;visibility:visible;transform:translateY(0)}
-  :host([data-launcher-docked]) .fab{position:relative!important;top:auto!important;right:auto!important;
-    bottom:auto!important;width:34px;height:32px;box-shadow:none;border-color:transparent;border-radius:7px}
-  @media(prefers-reduced-motion:reduce){.fab .fab-label{transition:none}}
+  .fab .fab-dot{position:absolute;right:2px;bottom:2px;width:6px;height:6px;box-shadow:0 0 0 2px #fff}
+  .fab .fab-label{position:absolute;top:calc(100% + 9px);right:0;width:max-content;max-width:280px;
+    padding:8px 10px;border-radius:7px;background:#16342b;color:#fff;font:12px/1.4 system-ui,sans-serif;
+    opacity:0;visibility:hidden;pointer-events:none;box-shadow:0 4px 12px #0003}
+  .fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1;visibility:visible}
   `;
 
-  function dockLauncher() {
-    if (host.hasAttribute('data-launcher-docked')) return true;
-    const candidates = document.querySelectorAll('#app-header, .app-header, #header, header[role="banner"], [role="banner"], .wme-header');
-    for (const candidate of candidates) {
-      const rect = candidate.getBoundingClientRect();
-      const style = getComputedStyle(candidate);
-      if (rect.top < -2 || rect.top > 15 || rect.width < 500 || rect.height < 28 || rect.height > 100) continue;
-      if (!['flex', 'inline-flex'].includes(style.display)) continue;
-      if (style.overflow !== 'visible' || style.transform !== 'none') continue;
-      const mount = document.createElement('span');
-      mount.id = 'tw-forms-launcher-mount';
-      mount.style.cssText = 'display:inline-flex;align-items:center;flex:0 0 auto;margin:0 6px;position:relative;';
-      candidate.append(mount);
-      mount.append(host);
-      host.setAttribute('data-launcher-docked', '');
-      return true;
+  // Keep the modal host in body: don't inherit toolbar clipping/transforms.
+  const launcherPositioning = (() => {
+    let toolbar = null, timer = null, mutation = null, resize = null;
+    let discovery = null, discoveryTimer = null;
+    const width = 32, height = 30, margin = 6;
+    const intersects = (a,b) => a.left < b.right && a.right > b.left && a.top < b.bottom && a.bottom > b.top;
+    function visibleRect(node) {
+      const rect = node.getBoundingClientRect();
+      if (rect.width < 1 || rect.height < 1 || rect.top > 100 || rect.bottom < 0) return null;
+      const style = getComputedStyle(node);
+      return style.visibility === 'hidden' || style.display === 'none' ? null : rect;
     }
-    return false;
-  }
-
-  // Bounded discovery: no permanent observer or polling while idle.
-  if (!dockLauncher()) {
-    let frame = null;
-    const observer = new MutationObserver(() => {
-      if (frame !== null) return;
-      frame = requestAnimationFrame(() => {
-        frame = null;
-        if (dockLauncher()) observer.disconnect();
+    function findSave() {
+      return [...document.querySelectorAll('button,[role="button"],wz-button')].find(node => {
+        const r = visibleRect(node);
+        if (!r || r.top > 65) return false;
+        const label = [node.getAttribute('aria-label'),node.getAttribute('title'),node.textContent].filter(Boolean).join(' ').trim();
+        return /^(salvar|save)(?:\b|\s|$)/i.test(label);
       });
-    });
-    observer.observe(document.body, {childList: true, subtree: true});
-    setTimeout(() => {
-      observer.disconnect();
-      if (frame !== null) cancelAnimationFrame(frame);
-    }, 15000);
-  }
+    }
+    function findToolbar(save) {
+      let node = save?.parentElement;
+      let fallback = null;
+      for (let i=0; node && i<8; i++,node=node.parentElement) {
+        const r = node.getBoundingClientRect();
+        if (r.top >= -5 && r.top <= 20 && r.height >= height && r.height <= 90 && r.width >= 250) {
+          fallback = node;
+          if (r.width >= innerWidth * .6) return node;
+        }
+      }
+      return fallback;
+    }
+    function schedule() {
+      clearTimeout(timer);
+      timer = setTimeout(place,160);
+    }
+    function observe(node) {
+      if (toolbar === node) return;
+      mutation?.disconnect(); resize?.disconnect(); toolbar = node;
+      if (!node) return;
+      mutation = new MutationObserver(schedule);
+      mutation.observe(node,{subtree:true,childList:true,characterData:true,attributes:true,attributeFilter:['class','style','hidden','disabled','aria-label']});
+      resize = new ResizeObserver(schedule); resize.observe(node);
+    }
+    function place() {
+      timer = null;
+      const save = findSave();
+      const bar = findToolbar(save);
+      if (!save || !bar) {
+        host.style.removeProperty('--tw-launcher-x');
+        host.style.setProperty('--tw-launcher-y','48px');
+        host.style.setProperty('--tw-launcher-right','12px');
+        observe(null);
+        return;
+      }
+      observe(bar);
+      const br = bar.getBoundingClientRect(), sr = save.getBoundingClientRect();
+      const y = Math.max(br.top+2, Math.min(sr.top+(sr.height-height)/2, br.bottom-height-2));
+      const occupied = [];
+      for (const node of bar.querySelectorAll('*')) {
+        if (host.contains(node) || node === host || ['SCRIPT','STYLE'].includes(node.tagName)) continue;
+        // Containers are not obstacles; interactive controls and actual content are.
+        const control = node.matches('button,input,select,textarea,a,[role="button"],[role="textbox"],svg,img,canvas,wz-button');
+        const textLeaf = node.children.length === 0 && node.textContent.trim();
+        if (!control && !textLeaf) continue;
+        const r = visibleRect(node);
+        if (r && r.bottom > y && r.top < y+height) occupied.push(r);
+      }
+      const min = Math.max(8,br.left+margin), max = Math.min(innerWidth-8,br.right-margin)-width;
+      const slots = [];
+      for (let x=min; x<=max; x+=2) {
+        const box={left:x-margin,right:x+width+margin,top:y,bottom:y+height};
+        if (occupied.some(r=>intersects(box,r))) continue;
+        const hit = document.elementFromPoint(x+width/2,y+height/2);
+        if (hit && hit !== host && !bar.contains(hit)) continue;
+        slots.push({x,score:Math.min(Math.abs(x-(sr.left-width-margin)),Math.abs(x-(sr.right+margin)))});
+      }
+      slots.sort((a,b)=>a.score-b.score);
+      if (slots.length) {
+        host.style.setProperty('--tw-launcher-x',Math.round(slots[0].x)+'px');
+        host.style.setProperty('--tw-launcher-y',Math.round(y)+'px');
+        host.style.setProperty('--tw-launcher-right','auto');
+      } else {
+        // No overlap: below the toolbar only when no 44px free slot exists.
+        host.style.removeProperty('--tw-launcher-x');
+        host.style.setProperty('--tw-launcher-y',Math.round(br.bottom+8)+'px');
+        host.style.setProperty('--tw-launcher-right','12px');
+      }
+    }
+    addEventListener('resize',schedule,{passive:true});
+    document.addEventListener('visibilitychange',()=>{if (!document.hidden) schedule();});
+    discovery = new MutationObserver(()=>{if (!toolbar) schedule();});
+    discovery.observe(document.body,{childList:true,subtree:true});
+    discoveryTimer = setTimeout(()=>{discovery.disconnect();discovery=null;},20000);
+    place();
+    return {refresh:schedule};
+  })();
 
 
   const overlay = el('div', null, root, 'overlay');
@@ -2461,7 +2499,6 @@
     previousFocus = document.activeElement;
     modalOpen = true;
     overlay.hidden = false;
-    fab.setAttribute('aria-expanded', 'true');
 
     trackEvent('modal_open', {
       connection_state: conn,
@@ -2490,7 +2527,6 @@
     if (dirty) scheduleSave();
 
     overlay.hidden = true;
-    fab.setAttribute('aria-expanded', 'false');
     modalOpen = false;
     clearTimeout(cooldownTick);
     cooldownTick = null;
