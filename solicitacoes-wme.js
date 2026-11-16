@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         ToolboxWaze — Central de solicitações WME
+// @name         Comunidade BR — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5
-// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
+// @version      4.2.5.1
+// @description  Solicitações ao site ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
 // @supportURL   https://github.com/andresdiniz/ToolboxWaze/issues
@@ -30,10 +30,10 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.4';
+  const VERSION = '4.2.5.1';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
-  const PREFIX = '[ToolboxWaze]';
+  const PREFIX = '[ComunidadeBR]';
 
   // Telemetria opcional. Preencha estas constantes para ativar o GA4.
   // Sem elas, apenas o monitoramento próprio permanece disponível.
@@ -187,13 +187,13 @@
   }
 
   const alerts = (await WmeAlertSystem.ready()).register({
-    scriptId: 'toolboxwaze-solicitacoes',
-    scriptName: 'ToolboxWaze — Central de solicitações WME',
+    scriptId: 'ComunidadeBR-solicitacoes',
+    scriptName: 'Comunidade BR — Central de solicitações WME',
     version: VERSION,
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.4',
+        version: '4.2.5.1',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -394,7 +394,7 @@
   const title = el('h2', 'Solicitações', header);
   title.id = 'tw3-title';
 
-  el('span', 'ToolboxWaze · ' + VERSION, header, 'muted');
+  el('span', 'Comunidade BR · ' + VERSION, header, 'muted');
   el('span', null, header, 'spacer');
 
   const mineButton = el('button', 'Minhas', header);
@@ -429,8 +429,8 @@
   const stepsList = el('ol', null, stepsCard);
 
   const STEPS = [
-    ['Informe seu e-mail', 'Usamos o apelido detectado no WME e o seu e-mail para criar (ou localizar) sua conta no ToolboxWaze.'],
-    ['Confirme no e-mail', 'Abra a mensagem do ToolboxWaze e clique em “Confirmar e-mail”. O link vale 60 minutos e só funciona uma vez.'],
+    ['Informe seu e-mail', 'Usamos o apelido detectado no WME e o seu e-mail para criar (ou localizar) sua conta no site ToolboxWaze.'],
+    ['Confirme no e-mail', 'Abra a mensagem do site ToolboxWaze e clique em “Confirmar e-mail”. O link vale 60 minutos e só funciona uma vez.'],
     ['Volte ao WME', 'O script detecta a confirmação sozinho (ou use “Já confirmei”). Este navegador fica conectado.'],
     ['Escolha o formulário e envie', 'Depois disso você não precisa repetir o processo neste navegador.']
   ];
@@ -489,7 +489,7 @@
   const consent = el('label', null, registerCard, 'choice');
   const consentBox = el('input', null, consent);
   consentBox.type = 'checkbox';
-  el('span', 'Concordo em enviar meu e-mail, meu apelido do WME e os dados das solicitações ao ToolboxWaze.', consent);
+  el('span', 'Concordo em enviar meu e-mail, meu apelido do WME e os dados das solicitações ao site ToolboxWaze.', consent);
 
   const registerRow = el('div', null, registerCard, 'row');
   registerRow.style.marginTop = '12px';
@@ -698,7 +698,7 @@
                 ) || []
             )[1] || '(não informado)';
         
-            console.group('[ToolboxWaze DIAGNOSTICO-V1] HTTP ' + response.status);
+            console.group('[Comunidade BR DIAGNOSTICO-V1] HTTP ' + response.status);
         
             console.error('Método:', method);
             console.error('URL enviada:', hideToken(API + path));
@@ -1810,7 +1810,7 @@
 
     if (confirmFirst && !(await confirmDialog(
       'Desconectar',
-      'Desconectar este navegador do ToolboxWaze? Você precisará confirmar o e-mail novamente.',
+      'Desconectar este navegador do site ToolboxWaze? Você precisará confirmar o e-mail novamente.',
       'Desconectar'
     ))) {
       return;
@@ -1879,7 +1879,7 @@
         const url = requestUrl(data);
 
         if (url) {
-            const link = el('a', 'Abrir no ToolboxWaze ↗', box);
+            const link = el('a', 'Abrir no site ToolboxWaze ↗', box);
             link.href = url;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
@@ -1964,7 +1964,7 @@
           link.href = url;
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
-          link.title = 'Abrir solicitação #' + item.id + ' no ToolboxWaze';
+          link.title = 'Abrir solicitação #' + item.id + ' no site ToolboxWaze';
         }
       }
     } catch (error) {
@@ -2008,7 +2008,7 @@
         const url = new URL(data.solicitacao.url, BASE);
 
         if (url.origin === BASE) {
-          const link = el('a', ' Abrir no ToolboxWaze', status);
+          const link = el('a', ' Abrir no site ToolboxWaze', status);
           link.href = url.href;
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
@@ -2440,8 +2440,8 @@
     await PAGE.SDK_INITIALIZED;
 
     sdk = PAGE.getWmeSdk({
-      scriptId: 'toolboxwaze-solicitacoes',
-      scriptName: 'ToolboxWaze — Solicitações'
+      scriptId: 'ComunidadeBR-solicitacoes',
+      scriptName: 'Comunidade BR — Solicitações'
     });
 
     if (!sdk.State.isReady()) {
@@ -2457,7 +2457,7 @@
       eventHandler: () => {
         const count = selection().length;
 
-        fabLabel.textContent = 'Toolbox · Solicitações' + (count ? ' (' + count + ')' : '');
+        fabLabel.textContent = 'Comunidade BR · Solicitações' + (count ? ' (' + count + ')' : '');
 
         if (!overlay.hidden) {
           contextNotice.textContent = 'A seleção pode ter mudado. Use Atualizar para recapturar.';
