@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.4
+// @version      4.2.5
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -2232,7 +2232,7 @@
     previousFocus?.focus();
 
     trackEvent('modal_closed');
-
+  }
   fab.onclick = open;
   closeButton.onclick = close;
   settingsButton.onclick = () => {
