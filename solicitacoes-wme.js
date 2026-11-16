@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.16
+// @version      4.2.5.17
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.16';
+  const VERSION = '4.2.5.17';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,7 +194,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.16',
+        version: '4.2.5.17',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -416,6 +416,60 @@
   @media(max-width:760px){.card{padding:15px}.field{margin-bottom:20px}}
   `;
 
+
+  css.textContent += `
+  .tw-requests,.tw-detail{padding:0;overflow:hidden;border:1px solid #d9e3e8;border-radius:14px;background:#fff;box-shadow:0 4px 16px #183c2b08}
+  .tw-requests>div{overflow-x:auto}
+  .tw-requests>div>p{margin:0;padding:24px;color:#465d55}
+  .tw-requests .table{display:table;width:100%;border:0;border-radius:0;border-collapse:collapse;font-size:13px;color:#203a31}
+  .tw-requests caption{text-align:left;padding:18px 20px;font-size:16px;font-weight:700;color:#163d2b;background:#fff;border-bottom:1px solid #e5ece8;caption-side:top}
+  .tw-requests .table th{padding:12px 18px;background:#f3f7f5;color:#4b6358;font-size:11px;letter-spacing:.05em;white-space:nowrap}
+  .tw-requests .table td{padding:16px 18px;border-bottom:1px solid #eaf0ed;vertical-align:middle;line-height:1.55}
+  .tw-requests .table tbody tr:nth-child(even){background:#fbfdfc}
+  .tw-requests .table tbody tr:hover,.tw-requests .table tbody tr:focus-within{background:#f0f8f3}
+  .tw-requests .table td:first-child{font-weight:750;color:#176d4c;font-variant-numeric:tabular-nums;white-space:nowrap}
+  .tw-requests .table td:nth-child(2){font-weight:600;min-width:170px;overflow-wrap:anywhere}
+  .tw-requests .table td:nth-child(4){white-space:nowrap;color:#53685e;font-variant-numeric:tabular-nums}
+  .tw-requests .table td.actions{display:table-cell;white-space:nowrap}
+  .tw-requests .actions button,.tw-requests .actions a{display:inline-flex;align-items:center;justify-content:center;min-height:34px;padding:6px 11px;border:1px solid #c8d9ce;border-radius:8px;font:600 12px/1.4 system-ui,sans-serif;text-decoration:none;vertical-align:middle;margin:2px 5px 2px 0;background:#fff;color:#175538}
+  .tw-requests .actions button{background:#edf7f0;border-color:#bcd8c6}
+  .tw-requests .actions button:hover,.tw-requests .actions a:hover{background:#dff0e5;border-color:#6da880}
+  .tw-requests .mine-status{display:inline-flex;align-items:center;gap:7px;padding:5px 9px;border-radius:999px;font-size:11px;font-weight:700;line-height:1.4;background:#edf0f2;color:#3e4e58;max-width:200px;white-space:normal}
+  .tw-requests .mine-status.open{background:#eaf2ff;color:#234e91}
+  .tw-requests .mine-status.pending{background:#fff3d4;color:#795000}
+  .tw-requests .mine-status.done{background:#e3f5e9;color:#1b6039}
+  .tw-requests .mine-status.rejected{background:#fde9e8;color:#962f2b}
+  .tw-requests .mine-status::before{width:6px;height:6px;flex:none}
+  .tw-detail .detail-head{margin:0;padding:18px 22px;gap:14px;flex-wrap:wrap;background:#f5f9f6;border-bottom:1px solid #e0eae4}
+  .tw-detail .detail-head h3{font-size:18px;line-height:1.35;margin:0;overflow-wrap:anywhere}
+  .tw-detail .back{background:#fff;border:1px solid #cbdacf;border-radius:8px;min-height:36px;padding:7px 12px;flex:none}
+  .tw-detail-body{padding:22px;line-height:1.65;color:#243e32}
+  .tw-detail-body>p:first-child{padding:10px 13px;background:#f4f7f5;border:1px solid #e1e9e4;border-radius:9px;margin:0 0 14px;color:#4a6254}
+  .tw-detail-link{display:inline-flex;align-items:center;min-height:36px;padding:7px 12px;border:1px solid #bad4c4;border-radius:8px;background:#edf7f1;color:#175538;text-decoration:none;font-size:12px;font-weight:650;margin-bottom:12px}
+  .tw-detail-link:hover{background:#dff0e5}
+  .tw-detail-body>h3{font-size:14px;margin:18px 0 14px;padding-top:18px;border-top:1px solid #e2ebe6}
+  .tw-comment{padding:16px 18px;border:1px solid #dfe9e2;border-left:3px solid #73a88a;border-radius:10px;background:#fcfefd;margin:0 0 14px;overflow-wrap:anywhere}
+  .tw-comment>strong{font-size:13px;color:#17492e}
+  .tw-comment>small{display:block;color:#5b7065;font-size:11px;margin-top:3px;font-variant-numeric:tabular-nums}
+  .tw-comment>p{white-space:pre-wrap;overflow-wrap:anywhere;margin:12px 0 0;font-size:13px;line-height:1.8;color:#293e32}
+  .tw-detail-body>.error-text{padding:14px;border-radius:9px;background:#fff0ef;border:1px solid #efccc7}
+  @media(max-width:680px){
+    .tw-requests{border:0;background:transparent;box-shadow:none;overflow:visible}
+    .tw-requests>div{overflow:visible}
+    .tw-requests .table,.tw-requests .table tbody{display:block;border:0;background:transparent}
+    .tw-requests .table caption{display:block;padding:8px 0 16px;border:0;background:transparent}
+    .tw-requests .table thead{position:absolute;width:1px;height:1px;padding:0;overflow:hidden;clip-path:inset(50%);white-space:nowrap}
+    .tw-requests .table tbody tr{display:block;border:1px solid #dce7df;border-radius:12px;overflow:hidden;margin-bottom:14px;background:#fff!important;box-shadow:0 2px 8px #16342b05}
+    .tw-requests .table td,.tw-requests .table td.actions{display:grid;grid-template-columns:112px minmax(0,1fr);align-items:center;gap:12px;padding:11px 14px;min-width:0;white-space:normal;border-bottom:1px solid #f0f4f1}
+    .tw-requests .table td::before{content:attr(data-label);font-size:11px;font-weight:600;color:#5b7065}
+    .tw-requests .table td.actions{display:flex;flex-wrap:wrap;gap:6px}
+    .tw-requests .table td.actions::before{width:106px;flex:none}
+    .tw-detail .detail-head{padding:15px;gap:10px}
+    .tw-detail-body{padding:16px}
+    .tw-comment{padding:13px 14px}
+  }
+  `;
+
   const fab = el('button', null, root, 'fab');
   fab.type = 'button';
   const fabDot = el('span', null, fab, 'fab-dot pending');
@@ -454,69 +508,25 @@
 
   const permalinkLauncher = (() => {
     const selector='.bottom.overlay-buttons-container';
-    const launcherHost=document.createElement('div');
-    launcherHost.id='tw-forms-inline-launcher';
-    launcherHost.style.cssText='display:flex!important;position:relative!important;flex:0 0 auto!important;align-items:center!important;justify-content:center!important;align-self:center!important;box-sizing:border-box!important;margin:4px 0 8px!important;padding:0!important;width:36px!important;height:34px!important;min-height:34px!important;opacity:1!important;visibility:visible!important;';
-    const launcherRoot=launcherHost.attachShadow({mode:'open'});
-    const style=document.createElement('style');
+    const launcherHost=document.createElement('div');launcherHost.id='tw-forms-inline-launcher';
+    launcherHost.style.cssText='display:flex!important;position:relative!important;flex:0 0 auto!important;align-items:center!important;justify-content:center!important;align-self:center!important;margin:4px 0 8px!important;padding:0!important;width:36px!important;height:34px!important;min-height:34px!important;opacity:1!important;visibility:visible!important;';
+    const launcherRoot=launcherHost.attachShadow({mode:'open'}),style=document.createElement('style');
     style.textContent=`
-      :host{color:#000;font:13px/1.4 system-ui,sans-serif;opacity:1;visibility:visible}
-      *{box-sizing:border-box}
-      .fab{all:unset;box-sizing:border-box!important;position:relative!important;display:flex!important;
-        align-items:center!important;justify-content:center!important;width:36px!important;height:34px!important;
-        min-width:36px!important;min-height:34px!important;padding:0!important;margin:0!important;
-        border:1.5px solid #000!important;border-radius:9px!important;background:#fff!important;
-        background-image:none!important;color:#000!important;opacity:1!important;visibility:visible!important;
-        box-shadow:0 1px 4px #0005!important;cursor:pointer;touch-action:manipulation;overflow:visible!important}
-      .fab:hover{background:#fff!important;box-shadow:0 0 0 2px #0003!important}
-      .fab:focus-visible{outline:2px solid #000!important;outline-offset:3px!important}
-      .fab>svg{display:block!important;visibility:visible!important;opacity:1!important;
-        width:22px!important;height:22px!important;flex:0 0 auto!important;color:#000!important;
-        fill:none!important;stroke:#000!important;stroke-width:1.9!important}
-      .fab>svg path{fill:none!important;stroke:#000!important;stroke-width:1.9!important;
-        stroke-linecap:round!important;stroke-linejoin:round!important;opacity:1!important;visibility:visible!important}
-      .fab-dot{display:block!important;position:absolute!important;width:7px!important;height:7px!important;
-        right:2px!important;bottom:2px!important;border:1px solid #000!important;border-radius:50%!important;
-        background:#eab308!important;box-shadow:0 0 0 2px #fff!important;pointer-events:none}
-      .fab-dot.ok{background:#22c55e!important}
-      .fab-dot.pending{background:#eab308!important}
-      .fab-dot.error{background:#ef4444!important}
-      .fab-label{position:absolute!important;right:calc(100% + 10px)!important;top:50%!important;
-        transform:translateY(-50%)!important;display:block!important;width:max-content!important;
-        max-width:min(270px,calc(100vw - 90px));padding:8px 11px!important;border-radius:7px!important;
-        border:1px solid #000!important;background:#fff!important;color:#000!important;
-        font:12px/1.5 system-ui,sans-serif!important;box-shadow:0 2px 8px #0003;
-        opacity:0!important;visibility:hidden!important;pointer-events:none!important;z-index:100}
-      .fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1!important;visibility:visible!important}
+    :host{color:#000;font:13px/1.4 system-ui,sans-serif}*{box-sizing:border-box}
+    .fab{all:unset;box-sizing:border-box!important;position:relative!important;display:flex!important;align-items:center!important;justify-content:center!important;width:36px!important;height:34px!important;min-width:36px!important;padding:0!important;margin:0!important;border:1.5px solid #000!important;border-radius:9px!important;background:#fff!important;color:#000!important;opacity:1!important;visibility:visible!important;box-shadow:0 1px 4px #0005!important;cursor:pointer;overflow:visible!important}
+    .fab:hover{background:#fff!important;box-shadow:0 0 0 2px #0003!important}.fab:focus-visible{outline:2px solid #000;outline-offset:3px}
+    .fab>svg{display:block!important;width:22px!important;height:22px!important;fill:none!important;stroke:#000!important;opacity:1!important;visibility:visible!important}
+    .fab>svg path{fill:none!important;stroke:#000!important;stroke-width:1.9!important;stroke-linecap:round;stroke-linejoin:round;opacity:1!important;visibility:visible!important}
+    .fab-dot{position:absolute;width:7px;height:7px;right:2px;bottom:2px;border:1px solid #000;border-radius:50%;background:#eab308;box-shadow:0 0 0 2px #fff;pointer-events:none}.fab-dot.ok{background:#22c55e}.fab-dot.pending{background:#eab308}.fab-dot.error{background:#ef4444}
+    .fab-label{position:absolute;right:calc(100% + 10px);top:50%;transform:translateY(-50%);display:block;width:max-content;max-width:min(270px,calc(100vw - 90px));padding:8px 11px;border-radius:7px;border:1px solid #000;background:#fff;color:#000;font:12px/1.5 system-ui,sans-serif;box-shadow:0 2px 8px #0003;opacity:0;visibility:hidden;pointer-events:none;z-index:100}.fab:hover .fab-label,.fab:focus-visible .fab-label{opacity:1;visibility:visible}
     `;
-    launcherRoot.append(style,fab);
-    fab.removeAttribute('data-anchor-missing');
-    fab.removeAttribute('title');
-    fab.style.removeProperty('width');fab.style.removeProperty('height');
-    fab.dataset.positionMode='waiting-for-container';
+    launcherRoot.append(style,fab);fab.removeAttribute('data-anchor-missing');fab.removeAttribute('title');
     let container=null,task=null;
-    function find(r=document){
-      const direct=r.querySelector(selector);if(direct)return direct;
-      for(const n of r.querySelectorAll('*')){
-        if(n===host || n===launcherHost)continue;
-        if(n.shadowRoot){const match=find(n.shadowRoot);if(match)return match;}
-      }
-      return null;
-    }
-    function mount(){
-      task=null;const target=find();
-      if(!target){fab.dataset.positionMode='waiting-for-container';return false;}
-      container=target;
-      if(launcherHost.parentNode!==target)target.prepend(launcherHost);
-      fab.dataset.positionMode='inside-bottom-controls';return true;
-    }
-    const observer=new MutationObserver(records=>{
-      if(launcherHost.isConnected && container?.isConnected && launcherHost.parentNode===container)return;
-      if(task===null && records.some(r=>r.addedNodes.length || r.removedNodes.length))task=setTimeout(mount,200);
-    });
-    observer.observe(document.body,{subtree:true,childList:true});
-    mount();
-    return {refresh:mount,diagnostic:()=>({mode:fab.dataset.positionMode,selector,mounted:launcherHost.isConnected,parent:launcherHost.parentElement?.className || null})};
+    function find(r=document){const d=r.querySelector(selector);if(d)return d;for(const n of r.querySelectorAll('*')){if(n===host||n===launcherHost)continue;if(n.shadowRoot){const m=find(n.shadowRoot);if(m)return m;}}return null;}
+    function mount(){task=null;const t=find();if(!t){fab.dataset.positionMode='waiting-for-container';return false;}container=t;if(launcherHost.parentNode!==t)t.prepend(launcherHost);fab.dataset.positionMode='inside-bottom-controls';return true;}
+    const observer=new MutationObserver(records=>{if(launcherHost.isConnected&&container?.isConnected&&launcherHost.parentNode===container)return;if(task===null&&records.some(r=>r.addedNodes.length||r.removedNodes.length))task=setTimeout(mount,200);});
+    observer.observe(document.body,{subtree:true,childList:true});mount();
+    return {refresh:mount,diagnostic:()=>({mode:fab.dataset.positionMode,mounted:launcherHost.isConnected,parent:launcherHost.parentElement?.className||null})};
   })();
 
   const overlay = el('div', null, root, 'overlay');
@@ -652,18 +662,18 @@
   const resendButton = el('button', 'Reenviar e-mail', waitRow);
   const changeButton = el('button', 'Usar outro e-mail', waitRow);
 
-  const mineCard = el('section', null, scroll, 'card');
+  const mineCard = el('section', null, scroll, 'card tw-requests');
   mineCard.hidden = true;
   const mineList = el('div', null, mineCard);
 
-  const detailCard = el('section', null, scroll, 'card');
+  const detailCard = el('section', null, scroll, 'card tw-detail');
   detailCard.hidden = true;
   const detailHead = el('div', null, detailCard, 'detail-head');
   const detailBack = el('button', '← Voltar', detailHead, 'back');
   detailBack.type = 'button';
   detailBack.onclick = () => showMineList();
   const detailTitle = el('h3', 'Minhas solicitações', detailHead);
-  const detailBody = el('div', null, detailCard);
+  const detailBody = el('div', null, detailCard, 'tw-detail-body');
 
   const pendingBox = el('div', null, scroll, 'card');
   pendingBox.hidden = true;
@@ -2160,7 +2170,7 @@
         const url = requestUrl(data);
 
         if (url) {
-            const link = el('a', 'Abrir no ToolboxWaze ↗', detailBody);
+            const link = el('a', 'Abrir no ToolboxWaze ↗', detailBody, 'tw-detail-link');
             link.href = url;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
@@ -2172,7 +2182,7 @@
             el('p', 'Sem comentários públicos ainda.', detailBody, 'muted');
         } else {
             for (const comment of data.comentarios) {
-                const item = el('div', null, detailBody);
+                const item = el('article', null, detailBody, 'tw-comment');
 
                 el('strong', comment.autor || 'Autor', item);
                 el('small', ' · ' + new Date(comment.criadoEm).toLocaleString(), item);
@@ -2198,11 +2208,13 @@
       }
 
       const table = el('table', null, mineList, 'table');
+      const caption = el('caption', null, table);
+      caption.textContent = 'Minhas solicitações · ' + data.solicitacoes.length + ' na lista';
       const thead = el('thead', null, table);
       const headRow = el('tr', null, thead);
 
       ['ID', 'Tipo de solicitação', 'Status', 'Data', 'Ações'].forEach(label => {
-        el('th', label, headRow);
+        el('th', label, headRow).scope = 'col';
       });
 
       const tbody = el('tbody', null, table);
@@ -2241,6 +2253,9 @@
           link.rel = 'noopener noreferrer';
           link.title = 'Abrir solicitação #' + item.id + ' no ToolboxWaze';
         }
+        const columns = ['ID', 'Tipo de solicitação', 'Status', 'Data', 'Ações'];
+        Array.from(row.children).forEach((cell,index) => { cell.dataset.label = columns[index]; });
+        details.setAttribute('aria-label', 'Ver detalhes da solicitação #' + item.id);
       }
     } catch (error) {
       mineList.replaceChildren(el('p', error.message, null, 'error-text'));
