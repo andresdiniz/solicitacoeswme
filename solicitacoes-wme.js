@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.2
+// @version      4.2.2.1
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,10 +30,18 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.2';
+  const VERSION = '4.2.2.1';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[ToolboxWaze]';
+
+  // Telemetria opcional. Preencha estas constantes para ativar o GA4.
+  // Sem elas, apenas o monitoramento próprio permanece disponível.
+  const GA_MEASUREMENT_ID = 'G-M30YGWFGV8';
+  const GA_API_SECRET = 'liFqyf8RQ3yNiV_BeFpH0A';
+  const MONITORING_ENDPOINT = API + '/monitoring/events';
+  const TELEMETRY_FLUSH_MS = 30000;
+  const TELEMETRY_MAX_QUEUE = 50;
   const PAGE = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 
   const log = (...args) => console.info(PREFIX, ...args);
@@ -44,6 +52,139 @@
     set: async (key, value) => await GM_setValue(key, value),
     del: async (key) => await GM_deleteValue(key)
   };
+
+  const telemetryAllowed = () => analyticsEnabled && (gaClientId || MONITORING_ENDPOINT);
+
+  function normalizeTelemetryParams(params) {
+    const safe = {};
+
+    for (const [key, value] of Object.entries(params || {})) {
+      if (value == null) continue;
+
+      const text = String(value).slice(0, 180);
+
+      if (/email|token|nickname|password|permalink|latitude|longitude|\blat\b|\blon\b/i.test(key)) continue;
+
+      safe[key] = text;
+    }
+
+    return safe;
+  }
+
+  function trackEvent(name, params = {}) {
+    if (!telemetryAllowed() || !name) return;
+
+    telemetryQueue.push({
+      name: String(name).slice(0, 60),
+      params: normalizeTelemetryParams(params),
+      occurredAt: new Date().toISOString()
+    });
+
+    if (telemetryQueue.length >= 10) {
+      flushTelemetry();
+      return;
+    }
+
+    scheduleTelemetryFlush();
+  }
+
+  function trackTiming(name, durationMs, params = {}) {
+    trackEvent('timing', {
+      name,
+      duration_ms: Math.max(0, Math.round(Number(durationMs) || 0)),
+      ...params
+    });
+  }
+
+  function scheduleTelemetryFlush() {
+    if (telemetryTimer) return;
+
+    telemetryTimer = setTimeout(() => {
+      telemetryTimer = null;
+      flushTelemetry();
+    }, TELEMETRY_FLUSH_MS);
+  }
+
+  async function flushTelemetry() {
+    clearTimeout(telemetryTimer);
+    telemetryTimer = null;
+
+    if (!telemetryQueue.length) return;
+
+    const events = telemetryQueue.splice(0, TELEMETRY_MAX_QUEUE);
+
+    if (analyticsEnabled && gaClientId && GA_MEASUREMENT_ID && GA_API_SECRET) {
+      const payload = {
+        client_id: gaClientId,
+        events: events.map(item => ({
+          name: item.name,
+          params: {
+            engagement_time_msec: 100,
+            script_version: VERSION,
+            ...item.params
+          }
+        }))
+      };
+
+      try {
+        GM_xmlhttpRequest({
+          method: 'POST',
+          url: 'https://www.google-analytics.com/mp/collect?measurement_id=' +
+            encodeURIComponent(GA_MEASUREMENT_ID) +
+            '&api_secret=' + encodeURIComponent(GA_API_SECRET),
+          headers: { 'Content-Type': 'application/json' },
+          data: JSON.stringify(payload),
+          anonymous: true,
+          timeout: 10000
+        });
+      } catch (error) {
+        warn('GA4:', error.message);
+      }
+    }
+
+    if (MONITORING_ENDPOINT && token) {
+      try {
+        GM_xmlhttpRequest({
+          method: 'POST',
+          url: MONITORING_ENDPOINT,
+          headers: {
+            Accept: 'application/json',
+            'Content-Type': 'application/json',
+            'X-API-TOKEN': token
+          },
+          data: JSON.stringify({
+            scriptVersion: VERSION,
+            events
+          }),
+          anonymous: true,
+          timeout: 10000
+        });
+      } catch (error) {
+        warn('Monitoramento próprio:', error.message);
+      }
+    }
+  }
+
+  async function setAnalyticsEnabled(enabled) {
+    analyticsEnabled = Boolean(enabled);
+    await store.set('tw_analytics_enabled', analyticsEnabled);
+
+    if (analyticsEnabled && !gaClientId) {
+      gaClientId = crypto.randomUUID();
+      await store.set('tw_ga_client_id', gaClientId);
+    }
+
+    if (analyticsEnabled) {
+      trackEvent('analytics_enabled');
+      scheduleTelemetryFlush();
+    } else {
+      telemetryQueue = [];
+      clearTimeout(telemetryTimer);
+      telemetryTimer = null;
+    }
+
+    updateAnalyticsButton();
+  }
 
   const alerts = (await WmeAlertSystem.ready()).register({
     scriptId: 'toolboxwaze-solicitacoes',
@@ -82,6 +223,10 @@
   let pendingInfo = null;
   let pollTimer = null;
   let modalOpen = false;
+  let analyticsEnabled = Boolean(await store.get('tw_analytics_enabled', false));
+  let gaClientId = await store.get('tw_ga_client_id', null);
+  let telemetryQueue = [];
+  let telemetryTimer = null;
 
   const randomToken = () => {
     const bytes = new Uint8Array(32);
@@ -242,6 +387,7 @@
   const settingsRow = el('div', null, settings, 'row');
   const retryButton = el('button', 'Tentar novamente', settingsRow, 'primary');
   const disconnectButton = el('button', 'Desconectar este navegador', settingsRow);
+  const analyticsButton = el('button', 'Estatísticas anônimas: desativadas', settingsRow);
   retryButton.hidden = true;
 
   const status = el('div', null, scroll, 'status');
@@ -386,6 +532,12 @@
     status.hidden = !text;
   }
 
+  function updateAnalyticsButton() {
+    analyticsButton.textContent = analyticsEnabled
+      ? 'Estatísticas anônimas: ativadas'
+      : 'Estatísticas anônimas: desativadas';
+  }
+
   function updateBusy() {
     sendButton.disabled = busy || conn !== 'ativo' || !identity || !definition || !definition.campos?.length || Boolean(unresolved);
     registerButton.disabled = busy;
@@ -426,6 +578,10 @@
     }
 
     return 'Resposta inesperada (HTTP ' + response.status + ') em ' + path + '. Detalhes no console (F12).';
+  }
+
+  function shouldTrackApiTiming(path) {
+    return /^\/(bootstrap|formularios\/|solicitacoes(\/|$)|duplicatas|envios\/)/.test(path);
   }
 
   function api(method, path, body) {
@@ -480,7 +636,17 @@
         
             console.groupEnd();
         }
-          log('HTTP', response.status, path, Math.round(performance.now() - start) + 'ms');
+          const duration = Math.round(performance.now() - start);
+
+          log('HTTP', response.status, path, duration + 'ms');
+
+          if (shouldTrackApiTiming(path)) {
+            trackTiming('api_request', duration, {
+              endpoint: path,
+              method,
+              http_status: response.status
+            });
+          }
 
           let data = null;
           try {
@@ -490,6 +656,13 @@
           const contentType = (/content-type:\s*([^\r\n;]+)/i.exec(response.responseHeaders || '') || [])[1]?.trim() || '';
 
           if (response.status < 200 || response.status >= 300) {
+            trackEvent('api_error', {
+              endpoint: path,
+              method,
+              http_status: response.status,
+              error_code: data?.codigo || ''
+            });
+
             const error = new Error(
               data?.message ||
               data?.error ||
@@ -1034,6 +1207,13 @@
       }
     }
 
+    if (Object.keys(errors).length) {
+      trackEvent('form_validation_error', {
+        form_slug: definition?.slug || '',
+        error_count: Object.keys(errors).length
+      });
+    }
+
     return errors;
   }
 
@@ -1091,6 +1271,12 @@
       restoring = true;
       answers = {};
       files = {};
+
+      trackEvent('form_selected', {
+        form_slug: data.slug,
+        form_version: data.versao || '',
+        field_count: data.campos.length
+      });
 
       const saved = await store.get(await draftKey());
 
@@ -1810,9 +1996,21 @@
       updateBusy();
       notice('Enviando… Não feche o navegador.');
 
+      const submissionStart = performance.now();
       const data = await api('POST', '/solicitacoes', body);
       await result(data);
+
+      trackEvent('request_created', {
+        form_slug: definition?.slug || '',
+        has_attachments: Object.values(files).some(list => list.length),
+        duration_ms: Math.round(performance.now() - submissionStart)
+      });
     } catch (error) {
+      trackEvent('request_failed', {
+        form_slug: definition?.slug || '',
+        http_status: error.status || '',
+        error_code: error.codigo || ''
+      });
       if (error.status && error.status >= 400 && error.status < 500 && error.status !== 409) {
         unresolved = null;
         await store.del('tw3_pending');
@@ -1876,6 +2074,11 @@
     modalOpen = true;
     overlay.hidden = false;
 
+    trackEvent('modal_open', {
+      connection_state: conn,
+      selection_count: selection().length
+    });
+
     if (!context && sdk) {
       context = collect();
       summary.textContent = summarize();
@@ -1902,7 +2105,8 @@
     stopPoll();
     stopAlertPoll();
     previousFocus?.focus();
-  }
+
+    trackEvent('modal_closed');
 
   fab.onclick = open;
   closeButton.onclick = close;
@@ -1926,6 +2130,7 @@
   changeButton.onclick = () => disconnect(false);
   disconnectButton.onclick = () => disconnect(true);
   retryButton.onclick = () => boot();
+  analyticsButton.onclick = () => setAnalyticsEnabled(!analyticsEnabled);
 
   refresh.onclick = () => {
     if (dirty && !window.confirm('Atualizar o contexto do WME? Campos já preenchidos serão preservados.')) return;
@@ -2082,6 +2287,11 @@
 
   log('Interface carregada', VERSION);
   updateBusy();
+  updateAnalyticsButton();
+  trackEvent('script_initialized', {
+    connection_state: conn,
+    sdk_ready: Boolean(sdk)
+  });
 
   try {
     for (let attempt = 0; attempt < 200; attempt++) {
