@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Central de solicitações WME - Comunidade BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.4
+// @version      4.2.5.5
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,7 +30,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.4';
+  const VERSION = '4.2.5.5';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -193,7 +193,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.4',
+        version: '4.2.5.5',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -559,6 +559,11 @@
   const account = el('div', null, side, 'card');
   el('h3', 'Sua conexão', account);
   const accountText = el('p', 'Desconectado', account, 'muted');
+  const accountStatus = el('p', '—', account, 'muted');
+  const accountDisconnect = el('button', 'Desconectar este navegador', account);
+  accountDisconnect.type = 'button';
+  accountDisconnect.hidden = true;
+  accountDisconnect.style.marginTop = '10px';
 
   const contextBox = el('section', null, side, 'card green');
   el('h3', 'Contexto do WME', contextBox);
@@ -653,7 +658,7 @@
     pendingBox.hidden = !isForm || !unresolved || conn !== 'ativo';
 
     settings.hidden = !isSettings && conn !== 'erro';
-    stepsCard.hidden = !(isSettings && (conn === 'registro' || conn === 'pendente' || conn === 'ativo'));
+    stepsCard.hidden = !(isSettings && (conn === 'registro' || conn === 'pendente'));
     registerCard.hidden = !(isSettings && conn === 'registro');
     waitCard.hidden = !(isSettings && conn === 'pendente');
 
@@ -1530,7 +1535,7 @@
       ativo: 3
     })[conn];
 
-    stepsCard.hidden = !(conn === 'registro' || conn === 'pendente' || (conn === 'ativo' && !settings.hidden));
+    stepsCard.hidden = !(conn === 'registro' || conn === 'pendente');
 
     stepItems.forEach((item, index) => {
       item.classList.toggle('done', current !== undefined && index < current);
@@ -1556,6 +1561,16 @@
       carregando: 'Conectando…',
       erro: 'Sem conexão com o servidor.'
     })[state] || '';
+
+    accountStatus.textContent = ({
+      ativo: 'Conectado',
+      pendente: 'Aguardando confirmação do e-mail',
+      registro: 'Não conectado',
+      carregando: 'Conectando…',
+      erro: 'Sem conexão com o servidor'
+    })[state] || '—';
+
+    accountDisconnect.hidden = state !== 'ativo';
 
     retryButton.hidden = state !== 'erro';
     disconnectButton.hidden = !token;
@@ -2329,6 +2344,7 @@
   fab.onclick = open;
   closeButton.onclick = close;
   footerClose.onclick = close;
+  accountDisconnect.onclick = () => disconnect(true);
   tabForm.onclick = () => showTab('form');
   tabMine.onclick = () => showTab('mine');
   tabSettings.onclick = () => showTab('settings');
