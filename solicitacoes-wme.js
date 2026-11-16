@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.1.7
+// @version      4.2.2
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,7 +30,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.1.5';
+  const VERSION = '4.2.2';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[ToolboxWaze]';
@@ -81,6 +81,7 @@
   let conn = 'carregando';
   let pendingInfo = null;
   let pollTimer = null;
+  let modalOpen = false;
 
   const randomToken = () => {
     const bytes = new Uint8Array(32);
@@ -625,6 +626,8 @@
   }
 
   function capture() {
+    if (!modalOpen) return;
+
     if (!sdk) {
       notice('SDK ainda não disponível.', 'error');
       return;
@@ -1197,7 +1200,7 @@
       setTimeout(() => (mailInput.value ? consentBox : mailInput).focus(), 0);
     }
 
-    if (state === 'ativo') startAlertPoll();
+    if (state === 'ativo' && modalOpen) startAlertPoll();
     else stopAlertPoll();
 
     syncSteps();
@@ -1265,19 +1268,30 @@
 
   function startAlertPoll() {
     stopAlertPoll();
-    alertPollTimer = setInterval(checkAlerts, 60000);
+
+    if (!modalOpen || document.hidden) return;
+
+    alertPollTimer = setTimeout(async () => {
+      alertPollTimer = null;
+
+      if (!modalOpen || document.hidden) return;
+
+      await checkAlerts();
+      startAlertPoll();
+    }, 60000);
+
     checkAlerts();
   }
 
   function stopAlertPoll() {
     if (alertPollTimer) {
-      clearInterval(alertPollTimer);
+      clearTimeout(alertPollTimer);
       alertPollTimer = null;
     }
   }
 
   async function checkAlerts() {
-    if (conn !== 'ativo' || !identity) return;
+    if (!modalOpen || document.hidden || conn !== 'ativo' || !identity) return;
 
     try {
       const query = lastSeen ? '?since=' + encodeURIComponent(lastSeen) : '';
@@ -1859,6 +1873,7 @@
 
   function open() {
     previousFocus = document.activeElement;
+    modalOpen = true;
     overlay.hidden = false;
 
     if (!context && sdk) {
@@ -1883,7 +1898,9 @@
     if (dirty) scheduleSave();
 
     overlay.hidden = true;
+    modalOpen = false;
     stopPoll();
+    stopAlertPoll();
     previousFocus?.focus();
   }
 
@@ -2015,6 +2032,19 @@
     event.stopImmediatePropagation();
     event.stopPropagation();
   }
+
+  document.addEventListener('visibilitychange', () => {
+    if (document.hidden) {
+      stopPoll();
+      stopAlertPoll();
+      return;
+    }
+
+    if (modalOpen) {
+      if (conn === 'pendente') startPoll();
+      if (conn === 'ativo') startAlertPoll();
+    }
+  });
 
   for (const type of ['keydown', 'keypress', 'keyup']) {
     window.addEventListener(type, shieldKeyboard, { capture: true });
