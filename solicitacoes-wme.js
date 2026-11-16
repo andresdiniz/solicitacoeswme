@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Central de solicitações WME - Comunidade BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.3
+// @version      4.2.5.4
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,7 +30,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.3';
+  const VERSION = '4.2.5.4';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -193,7 +193,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.3',
+        version: '4.2.5.4',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -376,6 +376,25 @@
   .why summary{cursor:pointer;font-weight:700;color:#4a3b0d}
   .why[open] summary{margin-bottom:8px}
   `;
+  css.textContent += `
+  .tabbar{display:flex;gap:6px;padding:12px 20px 0;background:#f4f8f5;flex-wrap:wrap}
+  .tab{border:1px solid #cbded5;background:#fff;color:#163d2b;border-radius:999px;padding:7px 14px;font-size:13px;font-weight:600}
+  .tab.active{background:#176d4c;border-color:#176d4c;color:#fff}
+  .close-x{width:36px;height:36px;padding:0;font-size:18px;line-height:1}
+  .detail-head{display:flex;align-items:center;gap:10px;margin-bottom:12px}
+  .back{padding:6px 10px;font-size:13px}
+  .table{width:100%;border-collapse:collapse;font-size:13px;background:#fff;border:1px solid #dce9e1;border-radius:10px;overflow:hidden}
+  .table th,.table td{padding:10px;border-bottom:1px solid #eef3f0;text-align:left;vertical-align:middle}
+  .table th{background:#f1f7f4;font-size:12px;color:#40594d;text-transform:uppercase;letter-spacing:.03em}
+  .table tr:last-child td{border-bottom:0}
+  .table .actions{display:flex;gap:6px;flex-wrap:wrap}
+  .table .actions button,.table .actions a{padding:5px 9px;font-size:12px}
+  .footer-close{margin-left:8px}
+  @media(max-width:760px){
+    .table{display:block;overflow-x:auto}
+    .tabbar{padding:10px 12px 0}
+  }
+  `;
 
   const fab = el('button', null, root, 'fab');
   fab.type = 'button';
@@ -397,12 +416,20 @@
   el('span', 'ToolboxWaze · ' + VERSION, header, 'muted');
   el('span', null, header, 'spacer');
 
-  const mineButton = el('button', 'Minhas', header);
-  const settingsButton = el('button', 'Conexão', header);
-  const closeButton = el('button', 'Fechar', header);
-  mineButton.hidden = true;
+  const closeButton = el('button', '✕', header, 'close-x');
+  closeButton.setAttribute('aria-label', 'Fechar');
 
   const scroll = el('div', null, dialog, 'scroll');
+
+  const tabBar = el('div', null, scroll, 'tabbar');
+  const tabForm = el('button', 'Solicitações', tabBar, 'tab active');
+  const tabMine = el('button', 'Minhas solicitações', tabBar, 'tab');
+  const tabSettings = el('button', 'Conexão', tabBar, 'tab');
+  tabForm.type = 'button';
+  tabMine.type = 'button';
+  tabSettings.type = 'button';
+
+  let currentTab = 'form';
 
   const settings = el('section', null, scroll, 'card');
   settings.hidden = true;
@@ -509,8 +536,16 @@
 
   const mineCard = el('section', null, scroll, 'card');
   mineCard.hidden = true;
-  el('h3', 'Minhas solicitações', mineCard);
   const mineList = el('div', null, mineCard);
+
+  const detailCard = el('section', null, scroll, 'card');
+  detailCard.hidden = true;
+  const detailHead = el('div', null, detailCard, 'detail-head');
+  const detailBack = el('button', '← Voltar', detailHead, 'back');
+  detailBack.type = 'button';
+  detailBack.onclick = () => showMineList();
+  const detailTitle = el('h3', 'Minhas solicitações', detailHead);
+  const detailBody = el('div', null, detailCard);
 
   const pendingBox = el('div', null, scroll, 'card');
   pendingBox.hidden = true;
@@ -551,6 +586,7 @@
   const footer = el('footer', null, dialog);
   const draftNote = el('small', 'Rascunho local por formulário', footer);
   el('span', null, footer, 'spacer');
+  const footerClose = el('button', 'Fechar', footer, 'footer-close');
   const clearButton = el('button', 'Limpar rascunho', footer);
   const sendButton = el('button', 'Enviar solicitação', footer, 'primary');
   sendButton.disabled = true;
@@ -594,6 +630,39 @@
     analyticsButton.textContent = analyticsEnabled
       ? 'Estatísticas anônimas: ativadas'
       : 'Estatísticas anônimas: desativadas';
+  }
+
+  function showTab(tab) {
+    currentTab = tab;
+
+    tabForm.classList.toggle('active', tab === 'form');
+    tabMine.classList.toggle('active', tab === 'mine');
+    tabSettings.classList.toggle('active', tab === 'settings');
+
+    applyView();
+  }
+
+  function applyView() {
+    const isForm = currentTab === 'form';
+    const isMine = currentTab === 'mine';
+    const isSettings = currentTab === 'settings';
+
+    mineCard.hidden = !isMine;
+    detailCard.hidden = true;
+    layout.hidden = !isForm || conn !== 'ativo';
+    pendingBox.hidden = !isForm || !unresolved || conn !== 'ativo';
+
+    settings.hidden = !isSettings && conn !== 'erro';
+    stepsCard.hidden = !(isSettings && (conn === 'registro' || conn === 'pendente' || conn === 'ativo'));
+    registerCard.hidden = !(isSettings && conn === 'registro');
+    waitCard.hidden = !(isSettings && conn === 'pendente');
+
+    if (isMine && !mineList.children.length) {
+      renderMine();
+    }
+
+    syncSteps();
+    updateBusy();
   }
 
   function updateBusy() {
@@ -1299,7 +1368,7 @@
       }
 
       if (!error && text && field.validacao === 'wkt' && !/^(POLYGON|LINESTRING)\s*\(/i.test(text)) {
-        error = 'Use POLYGON(( ou LINESTRING(.';
+        error = 'Use uma geometria WKT válida, por exemplo POLYGON((...)) ou LINESTRING(...).';
       }
 
       if (error) {
@@ -1474,12 +1543,7 @@
 
     if (info) pendingInfo = info;
 
-    registerCard.hidden = state !== 'registro';
-    waitCard.hidden = state !== 'pendente';
-    layout.hidden = state !== 'ativo';
-    mineButton.hidden = state !== 'ativo';
-
-    if (state !== 'ativo') mineCard.hidden = true;
+    tabMine.hidden = state !== 'ativo';
 
     if (state === 'pendente') {
       waitText.textContent = 'Enviamos um link de confirmação para ' + (pendingInfo?.emailMascarado || 'seu e-mail') + '. Abra o e-mail e clique em “Confirmar e-mail” para liberar o envio de solicitações.';
@@ -1496,7 +1560,7 @@
     retryButton.hidden = state !== 'erro';
     disconnectButton.hidden = !token;
 
-    if (state === 'erro') settings.hidden = false;
+
 
     if (state === 'registro' && !overlay.hidden) {
       setTimeout(() => (mailInput.value ? consentBox : mailInput).focus(), 0);
@@ -1505,8 +1569,7 @@
     if (state === 'ativo' && modalOpen) startAlertPoll();
     else stopAlertPoll();
 
-    syncSteps();
-    updateBusy();
+    applyView();
   }
 
   function prefillNick() {
@@ -1881,8 +1944,19 @@
     }
   }
 
+  function showMineList() {
+    detailCard.hidden = true;
+    mineCard.hidden = false;
+    detailTitle.textContent = 'Minhas solicitações';
+    renderMine();
+  }
+
   async function showStatus(id) {
-    mineList.replaceChildren(el('p', 'Carregando detalhes…', null, 'muted'));
+    currentTab = 'mine';
+    mineCard.hidden = true;
+    detailCard.hidden = false;
+    detailTitle.textContent = 'Solicitação #' + id;
+    detailBody.replaceChildren(el('p', 'Carregando detalhes…', null, 'muted'));
 
     try {
         const data = await api(
@@ -1890,50 +1964,40 @@
           '/solicitacoes/' + encodeURIComponent(id) + '/status'
         );
 
-        mineList.replaceChildren();
+        detailBody.replaceChildren();
 
-        const box = el('div', null, mineList, 'card');
-
-        el('h3', 'Solicitação #' + data.id, box);
         el(
             'p',
-            (data.statusLabel || data.status || '') + ' · ' +
+            (data.statusLabel || data.status || '—') + ' · ' +
             new Date(data.criadaEm).toLocaleString(),
-            box,
+            detailBody,
             'muted'
         );
 
         const url = requestUrl(data);
 
         if (url) {
-            const link = el('a', 'Abrir no ToolboxWaze ↗', box);
+            const link = el('a', 'Abrir no ToolboxWaze ↗', detailBody);
             link.href = url;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
         }
 
-        el('h3', 'Comentários públicos', box);
+        el('h3', 'Comentários públicos', detailBody);
 
         if (!data.comentarios?.length) {
-            el('p', 'Sem comentários públicos ainda.', box, 'muted');
+            el('p', 'Sem comentários públicos ainda.', detailBody, 'muted');
         } else {
             for (const comment of data.comentarios) {
-                const item = el('div', null, box);
+                const item = el('div', null, detailBody);
 
                 el('strong', comment.autor || 'Autor', item);
-                el('small', ' · ' + new Date(comment.criadoEm).toLocaleString(), item);
+                el('small', ' · ' + new Date(comment.criadaEm).toLocaleString(), item);
                 el('p', comment.texto, item);
             }
         }
-
-        const back = el('button', 'Voltar', box);
-
-        back.onclick = () => {
-            mineCard.hidden = false;
-            renderMine();
-        };
     } catch (error) {
-        mineList.replaceChildren(el('p', error.message, null, 'error-text'));
+        detailBody.replaceChildren(el('p', error.message, null, 'error-text'));
         authLost(error);
     }
 }
@@ -1950,12 +2014,24 @@
         return;
       }
 
+      const table = el('table', null, mineList, 'table');
+      const thead = el('thead', null, table);
+      const headRow = el('tr', null, thead);
+
+      ['ID', 'Tipo de solicitação', 'Status', 'Data', 'Ações'].forEach(label => {
+        el('th', label, headRow);
+      });
+
+      const tbody = el('tbody', null, table);
+
       for (const item of data.solicitacoes) {
         const url = requestUrl(item);
-        const row = el('div', null, mineList, 'mine-request');
+        const row = el('tr', null, tbody);
 
-        el('strong', '#' + item.id, row);
-        el('span', item.formulario || item.tipoLabel || 'Solicitação', row);
+        el('td', '#' + item.id, row);
+        el('td', item.formulario || item.tipoLabel || 'Solicitação', row);
+
+        const statusCell = el('td', null, row);
         const statusText = item.statusLabel || item.status || '';
         const statusKey = String(statusText).toLowerCase();
         const statusClass = statusKey.includes('conclu') || statusKey.includes('resolvid')
@@ -1966,28 +2042,17 @@
               ? 'pending'
               : 'open';
 
-        el('span', statusText, row, 'mine-status ' + statusClass);
+        el('span', statusText || '—', statusCell, 'mine-status ' + statusClass);
 
         const date = new Date(item.criadaEm);
-        const diff = Date.now() - date.getTime();
-        const days = Math.floor(diff / 86400000);
-        const relative = Number.isNaN(date.getTime())
-          ? ''
-          : days === 0
-            ? 'hoje'
-            : days === 1
-              ? 'ontem'
-              : days < 30
-                ? days + ' dias atrás'
-                : date.toLocaleDateString();
+        el('td', Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(), row);
 
-        el('small', relative, row);
-
-        const details = el('button', 'Detalhes', row);
+        const actions = el('td', null, row, 'actions');
+        const details = el('button', 'Detalhes', actions);
         details.onclick = () => showStatus(item.id);
 
         if (url) {
-          const link = el('a', 'Abrir ↗', row, 'mine-open');
+          const link = el('a', 'Abrir', actions);
           link.href = url;
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
@@ -2263,11 +2328,10 @@
 
   fab.onclick = open;
   closeButton.onclick = close;
-  settingsButton.onclick = () => {
-    settings.hidden = !settings.hidden;
-    syncSteps();
-  };
-  mineButton.onclick = loadMine;
+  footerClose.onclick = close;
+  tabForm.onclick = () => showTab('form');
+  tabMine.onclick = () => showTab('mine');
+  tabSettings.onclick = () => showTab('settings');
 
   registerButton.onclick = register;
 
@@ -2447,7 +2511,7 @@
   };
 
   log('Interface carregada', VERSION);
-  updateBusy();
+  showTab('form');
   updateAnalyticsButton();
   trackEvent('script_initialized', {
     connection_state: conn,
