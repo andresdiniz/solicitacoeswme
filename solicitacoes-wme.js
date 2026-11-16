@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.6
+// @version      4.2.5.7
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,7 +30,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.6';
+  const VERSION = '4.2.5.7';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -193,7 +193,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.6',
+        version: '4.2.5.7',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -690,14 +690,44 @@
     updateBusy();
   }
 
+  const submissionCooldowns = new Map();
+  let cooldownTick = null;
+  function cooldownKey() {
+    return identity && definition ? String(identity.id) + ':' + definition.slug : '';
+  }
+  function cooldownRemaining() {
+    return Math.max(0, Math.ceil(((submissionCooldowns.get(cooldownKey()) || 0) - Date.now()) / 1000));
+  }
+  function refreshCooldownTimer() {
+    clearTimeout(cooldownTick);
+    cooldownTick = null;
+    if (modalOpen && !document.hidden && cooldownRemaining() > 0) {
+      cooldownTick = setTimeout(() => { updateBusy(); }, 1000);
+    }
+  }
+  function applySubmissionCooldown(data) {
+    const seconds = Number(data?.aguardarSegundos);
+    const serverDate = Date.parse(data?.proximoEnvioEm || '');
+    const deadline = Number.isFinite(seconds) && seconds > 0
+      ? Date.now() + seconds * 1000
+      : serverDate;
+    const key = cooldownKey();
+    if (key && Number.isFinite(deadline) && deadline > Date.now()) {
+      submissionCooldowns.set(key, deadline);
+    }
+  }
+
   function updateBusy() {
-    const sendDisabled = busy || conn !== 'ativo' || !identity || !definition || !definition.campos?.length || Boolean(unresolved);
+    const sendDisabled = cooldownRemaining() > 0 || busy || conn !== 'ativo' || !identity || !definition || !definition.campos?.length || Boolean(unresolved);
 
     sendButton.disabled = sendDisabled;
+    refreshCooldownTimer();
     sendButton.classList.toggle('sending', busy);
     sendButton.replaceChildren();
     if (busy) el('span', null, sendButton, 'spinner');
-    sendButton.append(document.createTextNode(busy ? 'Processando…' : 'Enviar solicitação'));
+    const remaining = cooldownRemaining();
+    const countdown = String(Math.floor(remaining / 60)).padStart(2, '0') + ':' + String(remaining % 60).padStart(2, '0');
+    sendButton.append(document.createTextNode(busy ? 'Processando…' : remaining > 0 ? 'Enviar novamente em ' + countdown : 'Enviar solicitação'));
 
     sendButton.title = !identity || conn !== 'ativo'
       ? 'Conecte-se para enviar uma solicitação.'
@@ -851,6 +881,10 @@
             error.codigo = data?.codigo || '';
             error.errors = data?.errors || {};
             error.data = data || {};
+            if (error.codigo === 'intervalo_envio') {
+              applySubmissionCooldown(error.data);
+              updateBusy();
+            }
 
             reject(error);
             return;
@@ -2140,6 +2174,7 @@
       throw Object.assign(new Error('Resposta sem identificador de solicitação.'), { uncertain: true });
     }
 
+    applySubmissionCooldown(data);
     unresolved = null;
     await store.del('tw3_pending');
 
@@ -2171,7 +2206,7 @@
   }
 
   async function send() {
-    if (busy || !identity || !definition || !definition.campos?.length || unresolved) return;
+    if (cooldownRemaining() > 0 || busy || !identity || !definition || !definition.campos?.length || unresolved) return;
 
     renderFields();
 
@@ -2369,6 +2404,8 @@
 
     overlay.hidden = true;
     modalOpen = false;
+    clearTimeout(cooldownTick);
+    cooldownTick = null;
     stopPoll();
     stopAlertPoll();
     previousFocus?.focus();
@@ -2515,6 +2552,7 @@
   }
 
   document.addEventListener('visibilitychange', () => {
+    updateBusy();
     if (document.hidden) {
       stopPoll();
       stopAlertPoll();
