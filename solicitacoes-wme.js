@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.17
+// @version      4.2.5.18
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -541,7 +541,7 @@
   const title = el('h2', 'Solicitações', header);
   title.id = 'tw3-title';
 
-  el('span', 'ToolboxWaze · ' + VERSION, header, 'muted');
+  el('span', 'Comunidade BR · ' + VERSION, header, 'muted');
   el('span', null, header, 'spacer');
 
   const closeButton = el('button', '✕', header, 'close-x');
@@ -562,7 +562,7 @@
   const settings = el('section', null, scroll, 'card');
   settings.hidden = true;
 
-  el('h3', 'Conexão com o ToolboxWaze', settings);
+  el('h3', 'Conexão com o site ToolboxWaze', settings);
   const connText = el('p', 'Não conectado.', settings, 'muted');
   el('p', 'Para enviar solicitações é preciso estar conectado: você confirma o seu e-mail uma única vez e este navegador passa a usar um token aleatório gerado pelo script. Nenhuma senha, credencial ou cookie do Waze é enviado.', settings, 'muted');
 
@@ -2737,7 +2737,7 @@
 
     sdk = PAGE.getWmeSdk({
       scriptId: 'toolboxwaze-solicitacoes',
-      scriptName: 'ToolboxWaze — Solicitações'
+      scriptName: 'Comunidade BR — Solicitações'
     });
 
     if (!sdk.State.isReady()) {
