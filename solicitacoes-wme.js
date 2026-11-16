@@ -2107,6 +2107,7 @@
     previousFocus?.focus();
 
     trackEvent('modal_closed');
+  }
 
   fab.onclick = open;
   closeButton.onclick = close;
