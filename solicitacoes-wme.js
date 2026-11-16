@@ -1,7 +1,7 @@
 // ==UserScript==
-// @name         Central de solicitações WME - Comunidade BR
+// @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.5
+// @version      4.2.5.6
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,7 +30,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.5';
+  const VERSION = '4.2.5.6';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -166,7 +166,7 @@
   }
 
   async function setAnalyticsEnabled(enabled) {
-    analyticsEnabled = Boolean(enabled);
+    analyticsEnabled = true;
     await store.set('tw_analytics_enabled', analyticsEnabled);
 
     if (analyticsEnabled && !gaClientId) {
@@ -188,12 +188,12 @@
 
   const alerts = (await WmeAlertSystem.ready()).register({
     scriptId: 'toolboxwaze-solicitacoes',
-    scriptName: 'Comunidade BR — Central de solicitações WME',
+    scriptName: 'Formulário de solicitações BR',
     version: VERSION,
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.5',
+        version: '4.2.5.6',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -223,8 +223,12 @@
   let pendingInfo = null;
   let pollTimer = null;
   let modalOpen = false;
-  let analyticsEnabled = Boolean(await store.get('tw_analytics_enabled', false));
+  let analyticsEnabled = true;
   let gaClientId = await store.get('tw_ga_client_id', null);
+  if (!gaClientId) {
+    gaClientId = crypto.randomUUID();
+    await store.set('tw_ga_client_id', gaClientId);
+  }
   let telemetryQueue = [];
   let telemetryTimer = null;
 
@@ -396,10 +400,25 @@
   }
   `;
 
+  css.textContent += `
+  .card{padding:20px;margin-bottom:18px}
+  .field{margin-bottom:24px;padding-bottom:4px}
+  .field>label{margin-bottom:8px}
+  .field>button{display:inline-flex;align-items:center;min-height:40px;margin-top:12px;margin-bottom:6px}
+  .field>.hint,.field>.muted{margin-top:8px;margin-bottom:6px;line-height:1.6}
+  .field>.error-text{margin-top:8px}
+  .field input,.field select,.field textarea{padding:11px 12px}
+  .preview{gap:12px;margin-top:8px}
+  .preview button{margin-top:8px}
+  footer{gap:12px}
+  .types{margin-top:10px}
+  @media(max-width:760px){.card{padding:15px}.field{margin-bottom:20px}}
+  `;
+
   const fab = el('button', null, root, 'fab');
   fab.type = 'button';
   const fabDot = el('span', null, fab, 'fab-dot pending');
-  const fabLabel = el('span', 'Toolbox · Solicitações', fab, 'fab-label');
+  const fabLabel = el('span', 'Formulário de solicitações BR', fab, 'fab-label');
 
   const overlay = el('div', null, root, 'overlay');
   overlay.hidden = true;
@@ -560,6 +579,7 @@
   el('h3', 'Sua conexão', account);
   const accountText = el('p', 'Desconectado', account, 'muted');
   const accountStatus = el('p', '—', account, 'muted');
+  el('small', 'Telemetria de uso ativa: eventos e tempos enviados ao projeto e ao GA4 configurado.', account);
   const accountDisconnect = el('button', 'Desconectar este navegador', account);
   accountDisconnect.type = 'button';
   accountDisconnect.hidden = true;
@@ -632,9 +652,9 @@
   }
 
   function updateAnalyticsButton() {
-    analyticsButton.textContent = analyticsEnabled
-      ? 'Estatísticas anônimas: ativadas'
-      : 'Estatísticas anônimas: desativadas';
+    analyticsButton.textContent = 'Telemetria de uso ativa';
+    analyticsButton.disabled = true;
+    analyticsButton.title = 'Eventos de uso e tempos são enviados ao servidor do projeto e ao GA4 configurado. Não inclua dados pessoais nos eventos.';
   }
 
   function showTab(tab) {
@@ -657,7 +677,7 @@
     layout.hidden = !isForm || conn !== 'ativo';
     pendingBox.hidden = !isForm || !unresolved || conn !== 'ativo';
 
-    settings.hidden = !isSettings && conn !== 'erro';
+    settings.hidden = conn === 'ativo' || (!isSettings && conn !== 'erro');
     stepsCard.hidden = !(isSettings && (conn === 'registro' || conn === 'pendente'));
     registerCard.hidden = !(isSettings && conn === 'registro');
     waitCard.hidden = !(isSettings && conn === 'pendente');
@@ -675,9 +695,9 @@
 
     sendButton.disabled = sendDisabled;
     sendButton.classList.toggle('sending', busy);
-    sendButton.innerHTML = busy
-      ? '<span class="spinner"></span>Enviando…'
-      : 'Enviar solicitação';
+    sendButton.replaceChildren();
+    if (busy) el('span', null, sendButton, 'spinner');
+    sendButton.append(document.createTextNode(busy ? 'Processando…' : 'Enviar solicitação'));
 
     sendButton.title = !identity || conn !== 'ativo'
       ? 'Conecte-se para enviar uma solicitação.'
@@ -702,7 +722,11 @@
     retryButton.disabled = busy;
     clearButton.disabled = busy;
     refresh.disabled = busy;
-    pendingBox.hidden = !unresolved || conn !== 'ativo';
+    pendingBox.hidden = currentTab !== 'form' || !unresolved || conn !== 'ativo';
+    accountDisconnect.disabled = busy;
+    clearButton.hidden = currentTab !== 'form' || conn !== 'ativo';
+    sendButton.hidden = currentTab !== 'form' || conn !== 'ativo';
+    draftNote.hidden = currentTab !== 'form' || conn !== 'ativo';
   }
 
   function nonJsonMessage(response, contentType, path) {
@@ -1535,7 +1559,7 @@
       ativo: 3
     })[conn];
 
-    stepsCard.hidden = !(conn === 'registro' || conn === 'pendente');
+    stepsCard.hidden = !(currentTab === 'settings' && (conn === 'registro' || conn === 'pendente'));
 
     stepItems.forEach((item, index) => {
       item.classList.toggle('done', current !== undefined && index < current);
@@ -1549,6 +1573,12 @@
     if (info) pendingInfo = info;
 
     tabMine.hidden = state !== 'ativo';
+    tabSettings.hidden = state === 'ativo';
+    if (state === 'ativo' && currentTab === 'settings') currentTab = 'form';
+    if (['registro', 'pendente', 'erro'].includes(state)) currentTab = 'settings';
+    tabForm.classList.toggle('active', currentTab === 'form');
+    tabMine.classList.toggle('active', currentTab === 'mine');
+    tabSettings.classList.toggle('active', currentTab === 'settings');
 
     if (state === 'pendente') {
       waitText.textContent = 'Enviamos um link de confirmação para ' + (pendingInfo?.emailMascarado || 'seu e-mail') + '. Abra o e-mail e clique em “Confirmar e-mail” para liberar o envio de solicitações.';
@@ -1648,19 +1678,12 @@
 
   function startAlertPoll() {
     stopAlertPoll();
-
-    if (!modalOpen || document.hidden) return;
-
-    alertPollTimer = setTimeout(async () => {
-      alertPollTimer = null;
-
-      if (!modalOpen || document.hidden) return;
-
+    if (!modalOpen || document.hidden || conn !== 'ativo') return;
+    const tick = async () => {
       await checkAlerts();
-      startAlertPoll();
-    }, 60000);
-
-    checkAlerts();
+      if (modalOpen && !document.hidden && conn === 'ativo') alertPollTimer = setTimeout(tick, 60000);
+    };
+    tick();
   }
 
   function stopAlertPoll() {
@@ -1670,34 +1693,46 @@
     }
   }
 
+  let alertsLoading = false;
   async function checkAlerts() {
-    if (!modalOpen || document.hidden || conn !== 'ativo' || !identity) return;
-
-    try {
-      const query = lastSeen ? '?since=' + encodeURIComponent(lastSeen) : '';
-      const data = await api('GET', '/solicitacoes/alteracoes' + query);
-
+    if (alertsLoading || !modalOpen || document.hidden || conn !== 'ativo' || !identity) return;
+    alertsLoading = true;
+    const run = async () => {
+      const accountId = String(identity.id);
+      const credential = token;
+      const key = 'tw_notified_updates_v1_' + accountId;
+      const cursorKey = 'tw_alerts_cursor_v1_' + accountId;
+      const cursor = await store.get(cursorKey, null);
+      const data = await api('GET', '/solicitacoes/alteracoes' + (cursor ? '?since=' + encodeURIComponent(cursor) : ''));
+      if (!identity || String(identity.id) !== accountId || credential !== token) return;
+      const seen = await store.get(key, {});
       for (const item of (data.alteracoes || [])) {
-        alerts.notification.add({
-          id: 'solicitacao-' + item.id + '-' + item.atualizadoEm,
+        const version = item.atualizadoEm;
+        if (item.id == null || !version) continue;
+        const id = String(item.id);
+        const stamp = Date.parse(version);
+        const previous = seen[id];
+        if (previous && (previous === version || (Number.isFinite(stamp) && stamp <= Date.parse(previous)))) continue;
+        seen[id] = version;
+        await store.set(key, seen);
+        await alerts.notification.add({
+          id: 'solicitacao-' + item.id + '-' + version,
           title: 'Solicitação atualizada',
           message: item.resumo || ('#' + item.id + ' — ' + (item.statusLabel || item.status || 'atualizada')),
-          buttonText: 'Abrir',
-          action: 'abrir-solicitacao',
-          data: {
-            id: item.id,
-            url: requestUrl(item)
-          }
+          buttonText: 'Abrir', action: 'abrir-solicitacao',
+          data: { id: item.id, url: requestUrl(item) }
         });
       }
-
       if (data.servidorEm) {
         lastSeen = data.servidorEm;
-        await store.set('tw_alerts_last_seen', lastSeen);
+        await store.set(cursorKey, lastSeen);
       }
-    } catch (error) {
-      warn('Alertas:', error.message);
-    }
+    };
+    try {
+      if (navigator.locks?.request) await navigator.locks.request('tw-alert-poll', run);
+      else await run();
+    } catch (error) { warn('Alertas:', error.message); }
+    finally { alertsLoading = false; }
   }
 
   async function applyBootstrap(data) {
@@ -2007,7 +2042,7 @@
                 const item = el('div', null, detailBody);
 
                 el('strong', comment.autor || 'Autor', item);
-                el('small', ' · ' + new Date(comment.criadaEm).toLocaleString(), item);
+                el('small', ' · ' + new Date(comment.criadoEm).toLocaleString(), item);
                 el('p', comment.texto, item);
             }
         }
@@ -2363,7 +2398,7 @@
   changeButton.onclick = () => disconnect(false);
   disconnectButton.onclick = () => disconnect(true);
   retryButton.onclick = () => boot();
-  analyticsButton.onclick = () => setAnalyticsEnabled(!analyticsEnabled);
+  analyticsButton.disabled = true;
 
   refresh.onclick = async () => {
     if (dirty && !(await confirmDialog(
@@ -2565,7 +2600,7 @@
       eventHandler: () => {
         const count = selection().length;
 
-        fabLabel.textContent = 'Toolbox · Solicitações' + (count ? ' (' + count + ')' : '');
+        fabLabel.textContent = 'Formulário de solicitações BR' + (count ? ' (' + count + ')' : '');
 
         if (!overlay.hidden) {
           contextNotice.textContent = 'A seleção pode ter mudado. Use Atualizar para recapturar.';
