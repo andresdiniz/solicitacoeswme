@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.13
+// @version      4.2.5.14
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.13';
+  const VERSION = '4.2.5.14';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,7 +194,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.13',
+        version: '4.2.5.14',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -453,126 +453,128 @@
   `;
 
   const permalinkLauncher = (() => {
-    let anchor=null, pending=null, discovery=null, discoveryEnd=null;
-    let resize=null, changes=null, observedScope=null, lastWarning='';
-    function all(rootNode=document) {
+    let anchor=null,slot=null,slotOwner=null,task=null,scan=null,scanEnd=null;
+    let mutation=null,resize=null,scope=null,mode='initializing';
+    const gap=5;
+    function parent(n){return n.parentElement || n.getRootNode()?.host || null;}
+    function nodes(r=document){
       const result=[];
-      for(const node of rootNode.querySelectorAll('*')) {
-        if(node===host) continue;
-        result.push(node);
-        if(node.shadowRoot) result.push(...all(node.shadowRoot));
+      for(const n of r.querySelectorAll('*')){
+        if(n===host || n.id==='tw-forms-reserved-slot') continue;
+        result.push(n);if(n.shadowRoot) result.push(...nodes(n.shadowRoot));
       }
       return result;
     }
-    function parent(node) {return node.parentElement || node.getRootNode()?.host || null;}
-    function label(node) {
-      return [...(node.attributes || [])].filter(a=>/^(id|class|title|aria-label|data-testid|data-tooltip|icon|icon-name|name|href|xlink:href)$/.test(a.name))
-        .map(a=>a.value).join(' ');
-    }
-    function rect(node) {
-      const r=node.getBoundingClientRect();
-      if(r.width<12 || r.height<12 || r.width>110 || r.height>95 || r.left<innerWidth*.6 || r.top<35 || r.bottom>innerHeight) return null;
-      if(getComputedStyle(node).visibility==='hidden') return null;
-      return r;
-    }
-    function outerControl(node) {
-      // Cross only the internal button's shadow boundary, not siblings' wrappers.
-      let candidate=node;
-      for(let p=node,i=0;p && i<5;p=parent(p),i++) {
-        if(p.matches?.('button,a,[role="button"],wz-button,wz-icon-button')) candidate=p;
-        if(p!==node && !p.matches?.('button,a,[role="button"],wz-button,wz-icon-button,span,svg,i,wz-icon')) break;
+    function label(n){return [...(n.attributes || [])].filter(a=>/^(id|class|title|aria-label|data-testid|data-tooltip|icon|icon-name|name|href|xlink:href)$/.test(a.name)).map(a=>a.value).join(' ');}
+    function control(n){
+      let result=n;
+      for(let p=n,i=0;p && i<5;p=parent(p),i++){
+        if(p.matches?.('button,a,[role="button"],wz-button,wz-icon-button')) result=p;
+        if(p!==n && !p.matches?.('button,a,[role="button"],wz-button,wz-icon-button,span,svg,i,wz-icon')) break;
       }
-      return candidate;
+      return result;
     }
-    function findAnchor(nodes) {
-      const matches=new Map();
-      for(const node of nodes) {
-        // No descendant-of-parent search: that incorrectly picked adjacent controls.
-        const text=label(node);
-        const explicit=/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(text);
-        const icon=node.matches('i,svg,use,wz-icon,[icon],[icon-name],[data-icon]') &&
-          /(?:^|[\s_#:/-])(?:link|chain|insert_link)(?:$|[\s_#:/-])/i.test(text);
-        if(!explicit && !icon) continue;
-        const control=outerControl(node), r=rect(control);
-        if(!r) continue;
-        const score=(explicit?1000:100)+(r.right>innerWidth-130?30:0);
-        if(!matches.has(control) || matches.get(control)<score) matches.set(control,score);
+    function visible(n){
+      const r=n.getBoundingClientRect();
+      return r.width>=12 && r.height>=12 && r.width<=110 && r.height<=95 && r.left>innerWidth*.6 && r.top>35 && r.bottom<innerHeight && getComputedStyle(n).visibility!=='hidden';
+    }
+    function find(list){
+      const found=new Map();
+      for(const n of list){
+        const l=label(n);
+        const exact=/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(l);
+        const icon=n.matches('i,svg,use,wz-icon,[icon],[icon-name],[data-icon]') && /(?:^|[\s_#:/-])(?:link|chain|insert_link)(?:$|[\s_#:/-])/i.test(l);
+        if(!exact && !icon) continue;
+        const c=control(n);if(!visible(c)) continue;
+        found.set(c,Math.max(found.get(c)||0,exact?1000:100));
       }
-      return [...matches].sort((a,b)=>b[1]-a[1])[0]?.[0] || null;
+      return [...found].sort((a,b)=>b[1]-a[1])[0]?.[0] || null;
     }
-    function hide(reason) {
-      fab.setAttribute('data-anchor-missing','');
-      fab.dataset.positionMode=reason;
-      if(reason!==lastWarning) {lastWarning=reason;warn('Posição do ícone:',reason);}
+    function schedule(){
+      if(task!==null || document.hidden) return;
+      task=setTimeout(()=>{task=null;place();},180);
     }
-    function schedule() {
-      if(document.hidden || pending!==null) return;
-      pending=setTimeout(()=>{pending=null;place();},180);
+    function reserve(c,size){
+      if(slot?.isConnected && slotOwner===c) return true;
+      slot?.remove();slot=null;slotOwner=null;
+      // Reserve only in a real narrow vertical layout; never insert into a row.
+      const p=c.parentElement;
+      if(!p) return false;
+      const style=getComputedStyle(p),r=p.getBoundingClientRect();
+      const vertical=(style.display.includes('flex') && style.flexDirection==='column') ||
+        (style.display==='block' && r.width<=100);
+      if(!vertical || r.width>160 || p===document.body) return false;
+      slot=document.createElement('div');slot.id='tw-forms-reserved-slot';
+      slot.setAttribute('aria-hidden','true');
+      slot.style.cssText='display:block;box-sizing:border-box;position:relative;flex:0 0 auto;align-self:center;pointer-events:none;';
+      slot.style.width=size+'px';slot.style.height=(size+gap*2)+'px';
+      c.after(slot);slotOwner=c;return true;
     }
-    function observe(node) {
-      let scope=node;
-      for(let i=0;i<3 && parent(scope);i++) {
-        const next=parent(scope), r=next.getBoundingClientRect();
-        if(r.width>240 || r.height>innerHeight*.95) break;
-        scope=next;
-      }
-      if(observedScope===scope) return;
-      changes?.disconnect();resize?.disconnect();observedScope=scope;
-      resize=new ResizeObserver(schedule);
-      resize.observe(node);resize.observe(scope);
-      const outer=parent(scope);if(outer) resize.observe(outer);
-      changes=new MutationObserver(schedule);
-      changes.observe(scope,{childList:true,subtree:true,attributes:true,attributeFilter:['style','class','hidden','aria-label']});
+    function watch(c){
+      const p=parent(c)||c;
+      if(scope===p) return;
+      mutation?.disconnect();resize?.disconnect();scope=p;
+      mutation=new MutationObserver(records=>{
+        if(records.every(r=>r.target===slot)) return;
+        schedule();
+      });
+      mutation.observe(p,{subtree:true,childList:true,attributes:true,attributeFilter:['class','style','hidden']});
+      resize=new ResizeObserver(schedule);resize.observe(c);resize.observe(p);
+      if(parent(p)) resize.observe(parent(p));
     }
-    function place() {
-      const nodes=all();
-      anchor=findAnchor(nodes);
-      if(!anchor) {hide('permalink-nao-identificado');return false;}
-      observe(anchor);
-      const ar=anchor.getBoundingClientRect();
-      const size=Math.min(36,Math.max(28,ar.width));
-      const h=Math.min(32,Math.max(26,ar.height));
-      const x=Math.max(5,Math.min(innerWidth-size-5,ar.left+(ar.width-size)/2));
-      const blockers=[];
-      for(const node of nodes) {
-        if(!node.matches('button,a,[role="button"],wz-button,wz-icon-button,input,select')) continue;
-        const control=outerControl(node);
-        if(control===anchor || control.contains(anchor) || anchor.contains(control)) continue;
-        const r=rect(control);
-        if(r && r.right>x-4 && r.left<x+size+4 && r.bottom>ar.bottom+1) blockers.push(r);
-      }
-      // Search only the short slot immediately below permalink, not the zoom area.
-      const first=ar.bottom+6;
-      const limit=Math.min(innerHeight-h-8,first+48);
-      let y=null;
-      for(let top=first;top<=limit;top+=2) {
-        if(blockers.some(r=>r.top<top+h+5 && r.bottom>top-5)) continue;
-        const hit=document.elementFromPoint(x+size/2,top+h/2);
-        const interactive=hit?.closest?.('button,a,[role="button"],wz-button,wz-icon-button,input,select');
-        if(interactive && interactive!==host && interactive!==anchor) continue;
-        y=top;break;
-      }
-      if(y===null) {hide('sem-espaco-abaixo-do-permalink');return false;}
+    function apply(x,y,size,newMode){
+      x=Math.max(5,Math.min(innerWidth-size-5,x));
       host.style.setProperty('--tw-link-x',Math.round(x)+'px');
       host.style.setProperty('--tw-link-y',Math.round(y)+'px');
-      fab.style.width=size+'px';fab.style.height=h+'px';
-      fab.dataset.positionMode='permalink';fab.removeAttribute('data-anchor-missing');
-      lastWarning='';
-      return true;
+      fab.style.width=size+'px';fab.style.height=size+'px';
+      fab.dataset.positionMode=newMode;mode=newMode;
+      fab.removeAttribute('data-anchor-missing');
     }
-    function start() {
-      if(place()) {discovery?.disconnect();clearTimeout(discoveryEnd);return;}
-      discovery?.disconnect();clearTimeout(discoveryEnd);
-      discovery=new MutationObserver(schedule);
-      discovery.observe(document.body,{childList:true,subtree:true});
-      discoveryEnd=setTimeout(()=>{discovery?.disconnect();discovery=null;},20000);
+    function place(){
+      const list=nodes();const next=find(list);
+      if(!next){
+        slot?.remove();slot=null;slotOwner=null;
+        // Never disappear: visible upper-right temporary access during discovery.
+        apply(innerWidth-52,190,28,'fallback');return false;
+      }
+      anchor=next;watch(anchor);
+      const ar=anchor.getBoundingClientRect();const size=innerHeight<650?26:28;
+      const reserved=reserve(anchor,size);
+      const obstacles=[];
+      for(const n of list){
+        if(!n.matches('button,a,[role="button"],wz-button,wz-icon-button,input,select')) continue;
+        const c=control(n);
+        if(c===anchor || c===host || !visible(c)) continue;
+        const r=c.getBoundingClientRect();
+        // Internal shadow buttons of the anchor aren't independent obstacles.
+        if(Math.abs(r.left-ar.left)<3 && Math.abs(r.top-ar.top)<3 && Math.abs(r.bottom-ar.bottom)<5) continue;
+        obstacles.push(r);
+      }
+      const x=ar.left+(ar.width-size)/2;
+      function free(y){return !obstacles.some(r=>r.right>x-3 && r.left<x+size+3 && r.bottom>y-3 && r.top<y+size+3);}
+      if(reserved && slot?.isConnected){
+        const sr=slot.getBoundingClientRect();const y=sr.top+gap;
+        if(y>=ar.bottom && y+size<innerHeight-8 && free(y)) {apply(x,y,size,'reserved-below-permalink');return true;}
+      }
+      // Accept the first genuine gap below permalink; no arbitrary 48px cutoff.
+      for(let y=ar.bottom+gap;y+size<innerHeight-12;y+=2){
+        if(free(y)){apply(x,y,size,'below-permalink');return true;}
+      }
+      apply(innerWidth-52,Math.max(50,ar.bottom+gap),26,'fallback');
+      return false;
+    }
+    function start(){
+      const ok=place();scan?.disconnect();clearTimeout(scanEnd);
+      if(ok) return;
+      scan=new MutationObserver(schedule);scan.observe(document.body,{childList:true,subtree:true});
+      scanEnd=setTimeout(()=>{scan?.disconnect();scan=null;},20000);
     }
     addEventListener('resize',schedule,{passive:true});
     addEventListener('scroll',schedule,{capture:true,passive:true});
     document.addEventListener('fullscreenchange',schedule);
-    document.addEventListener('visibilitychange',()=>{if(!document.hidden) schedule();});
+    document.addEventListener('visibilitychange',()=>{if(!document.hidden)schedule();});
     start();
-    return {refresh:start, diagnostic:()=>({mode:fab.dataset.positionMode,anchor:anchor?.outerHTML?.slice(0,1200) || null})};
+    return {refresh:start,diagnostic:()=>({mode,anchor:anchor?.outerHTML?.slice(0,1200)||null,reserved:Boolean(slot?.isConnected)})};
   })();
 
   const overlay = el('div', null, root, 'overlay');
