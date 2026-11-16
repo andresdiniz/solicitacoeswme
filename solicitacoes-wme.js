@@ -351,9 +351,36 @@
   .hint.ok{color:#125d39}
   .hint.bad{color:#b3261e}
   `;
+  css.textContent += `
+  .fab{display:flex;align-items:center;gap:9px}
+  .fab-dot{width:9px;height:9px;border-radius:50%;background:#ffd54d;box-shadow:0 0 0 2px #ffffff55;flex:none}
+  .fab-dot.ok{background:#4ade80}
+  .fab-dot.pending{background:#ffd54d}
+  .fab-dot.error{background:#ff6b6b}
+  .status.info::before{content:"ℹ️ "}
+  .status.success::before{content:"✅ "}
+  .status.error::before{content:"⚠️ "}
+  .spinner{display:inline-block;width:14px;height:14px;border:2px solid #ffffff66;border-top-color:#fff;border-radius:50%;animation:tw-spin .8s linear infinite;vertical-align:-2px;margin-right:7px}
+  @keyframes tw-spin{to{transform:rotate(360deg)}}
+  .context-list{white-space:pre-wrap;overflow-wrap:anywhere;font:12px/1.6 system-ui;margin:0;max-height:260px;overflow:auto}
+  .mine-status{display:inline-flex;align-items:center;gap:6px}
+  .mine-status::before{content:"";width:8px;height:8px;border-radius:50%;background:#6b7280;flex:none}
+  .mine-status.open{color:#1d4ed8}.mine-status.open::before{background:#3b82f6}
+  .mine-status.pending{color:#92400e}.mine-status.pending::before{background:#f59e0b}
+  .mine-status.done{color:#166534}.mine-status.done::before{background:#22c55e}
+  .mine-status.rejected{color:#991b1b}.mine-status.rejected::before{background:#ef4444}
+  .confirm-overlay{position:fixed;inset:0;background:#0b241dcc;display:grid;place-items:center;padding:20px;z-index:2147483647}
+  .confirm-box{max-width:420px;width:100%;background:#fff;border-radius:14px;padding:18px;box-shadow:0 20px 60px #0006}
+  .confirm-box h3{margin:0 0 8px}
+  .confirm-box p{margin:0 0 16px}
+  .why summary{cursor:pointer;font-weight:700;color:#4a3b0d}
+  .why[open] summary{margin-bottom:8px}
+  `;
 
-  const fab = el('button', 'Toolbox · Solicitações', root, 'fab');
+  const fab = el('button', null, root, 'fab');
   fab.type = 'button';
+  const fabDot = el('span', null, fab, 'fab-dot pending');
+  const fabLabel = el('span', 'Toolbox · Solicitações', fab, 'fab-label');
 
   const overlay = el('div', null, root, 'overlay');
   overlay.hidden = true;
@@ -417,8 +444,8 @@
     return item;
   });
 
-  const why = el('div', null, stepsCard, 'why');
-  el('strong', 'Por que isso é necessário?', why);
+  const why = el('details', null, stepsCard, 'why');
+  el('summary', 'Por que isso é necessário?', why);
   el('p', 'O ToolboxWaze precisa saber quem enviou cada solicitação para que os responsáveis possam responder e para evitar spam e abuso. O script não consegue provar quem você é no Waze, por isso confirmamos o seu e-mail uma única vez. Nenhuma senha nem cookie do Waze é enviado; o token fica guardado só neste navegador.', why);
 
   const registerCard = el('section', null, scroll, 'card');
@@ -526,9 +553,36 @@
 
   const previews = new Set();
 
+  function confirmDialog(title, message, confirmLabel = 'Confirmar') {
+    return new Promise(resolve => {
+      const box = el('div', null, root, 'confirm-overlay');
+      const card = el('div', null, box, 'confirm-box');
+
+      el('h3', title, card);
+      el('p', message, card);
+
+      const actions = el('div', null, card, 'row');
+      const cancel = el('button', 'Cancelar', actions);
+      const ok = el('button', confirmLabel, actions, 'primary');
+
+      const finish = value => {
+        box.remove();
+        resolve(value);
+      };
+
+      cancel.onclick = () => finish(false);
+      ok.onclick = () => finish(true);
+      box.onclick = event => {
+        if (event.target === box) finish(false);
+      };
+
+      ok.focus();
+    });
+  }
+
   function notice(text, type = '') {
     status.textContent = text;
-    status.className = 'status ' + type;
+    status.className = 'status ' + (type || (text ? 'info' : ''));
     status.hidden = !text;
   }
 
@@ -539,7 +593,29 @@
   }
 
   function updateBusy() {
-    sendButton.disabled = busy || conn !== 'ativo' || !identity || !definition || !definition.campos?.length || Boolean(unresolved);
+    const sendDisabled = busy || conn !== 'ativo' || !identity || !definition || !definition.campos?.length || Boolean(unresolved);
+
+    sendButton.disabled = sendDisabled;
+    sendButton.classList.toggle('sending', busy);
+    sendButton.innerHTML = busy
+      ? '<span class="spinner"></span>Enviando…'
+      : 'Enviar solicitação';
+
+    sendButton.title = !identity || conn !== 'ativo'
+      ? 'Conecte-se para enviar uma solicitação.'
+      : !definition || !definition.campos?.length
+        ? 'Escolha um formulário.'
+        : unresolved
+          ? 'Consulte o envio pendente antes de enviar novamente.'
+          : '';
+
+    fabDot.className = 'fab-dot ' + ({
+      ativo: 'ok',
+      pendente: 'pending',
+      carregando: 'pending',
+      registro: 'error',
+      erro: 'error'
+    }[conn] || 'pending');
     registerButton.disabled = busy;
     verifyButton.disabled = busy;
     resendButton.disabled = busy;
@@ -783,18 +859,22 @@
   }
 
   function summarize() {
-    if (!context) return 'SDK ainda indisponível. Você pode preencher os campos manualmente.';
+    if (!context) return '📍 SDK ainda indisponível. Você pode preencher os campos manualmente.';
+
+    const segmentCount = context.objetos.filter(object => object.type === 'segment').length;
+    const venueCount = context.objetos.filter(object => object.type === 'venue').length;
 
     return [
-      'Capturado: ' + new Date(context.capturadoEm).toLocaleTimeString(),
-      'Selecionados: ' + context.totalSelecionados,
-      'Zoom: ' + (context.zoom ?? 'indisponível'),
-      ...context.objetos.map(object => [
-        object.type + ' #' + object.id,
-        object.streetName || object.name,
-        object.lockLevel == null ? null : 'Bloqueio ' + object.lockLevel
-      ].filter(Boolean).join(' · ')),
-      context.totalSelecionados > 50 ? 'Contexto limitado a 50 objetos.' : null
+      '📍 Posição: ' + (
+        Number.isFinite(context.center?.lat) && Number.isFinite(context.center?.lon)
+          ? context.center.lat.toFixed(5) + ', ' + context.center.lon.toFixed(5)
+          : 'indisponível'
+      ),
+      '🔍 Zoom: ' + (context.zoom ?? 'indisponível'),
+      '🛣️ Segmentos: ' + segmentCount,
+      '🏢 POIs: ' + venueCount,
+      context.totalSelecionados > 50 ? '⚠️ Contexto limitado a 50 objetos.' : '',
+      '🕒 Capturado às ' + new Date(context.capturadoEm).toLocaleTimeString()
     ].filter(Boolean).join('\n');
   }
 
@@ -943,6 +1023,7 @@
         answers[field.chave] = newValue;
         dirty = true;
         scheduleSave();
+        liveValidate(field.chave);
 
         if (definition.campos.some(item => item.mostrarSe && Object.hasOwn(item.mostrarSe, field.chave))) {
           renderFields();
@@ -1130,7 +1211,7 @@
     updateBusy();
   }
 
-  function validate() {
+  function validate(silent = false) {
     const errors = {};
     const allowed = ['text', 'textarea', 'number', 'email', 'url', 'date', 'select', 'radio', 'checkbox', 'file'];
 
@@ -1207,7 +1288,7 @@
       }
     }
 
-    if (Object.keys(errors).length) {
+    if (!silent && Object.keys(errors).length) {
       trackEvent('form_validation_error', {
         form_slug: definition?.slug || '',
         error_count: Object.keys(errors).length
@@ -1215,6 +1296,24 @@
     }
 
     return errors;
+  }
+
+  function liveValidate(key) {
+    if (!definition) return;
+
+    const errors = validate(true);
+    const box = Array.from(fieldArea.children).find(node => node.dataset.key === key);
+
+    if (!box) return;
+
+    const error = box.querySelector('.error-text');
+    const message = errors[key] || '';
+
+    error.textContent = message;
+    box.querySelectorAll('input,textarea,select').forEach(node => {
+      node.classList.toggle('bad', Boolean(message));
+      node.setAttribute('aria-invalid', message ? 'true' : 'false');
+    });
   }
 
   async function draftKey() {
@@ -1709,7 +1808,11 @@
   async function disconnect(confirmFirst = true) {
     if (busy) return;
 
-    if (confirmFirst && !window.confirm('Desconectar este navegador do ToolboxWaze? Você precisará confirmar o e-mail novamente.')) {
+    if (confirmFirst && !(await confirmDialog(
+      'Desconectar',
+      'Desconectar este navegador do ToolboxWaze? Você precisará confirmar o e-mail novamente.',
+      'Desconectar'
+    ))) {
       return;
     }
 
@@ -1826,10 +1929,32 @@
 
         el('strong', '#' + item.id, row);
         el('span', item.formulario || item.tipoLabel || 'Solicitação', row);
-        el('span', item.statusLabel || item.status || '', row, 'muted');
+        const statusText = item.statusLabel || item.status || '';
+        const statusKey = String(statusText).toLowerCase();
+        const statusClass = statusKey.includes('conclu') || statusKey.includes('resolvid')
+          ? 'done'
+          : statusKey.includes('recus') || statusKey.includes('rejeit')
+            ? 'rejected'
+            : statusKey.includes('pend') || statusKey.includes('aguard')
+              ? 'pending'
+              : 'open';
+
+        el('span', statusText, row, 'mine-status ' + statusClass);
 
         const date = new Date(item.criadaEm);
-        el('small', Number.isNaN(date.getTime()) ? '' : date.toLocaleDateString(), row);
+        const diff = Date.now() - date.getTime();
+        const days = Math.floor(diff / 86400000);
+        const relative = Number.isNaN(date.getTime())
+          ? ''
+          : days === 0
+            ? 'hoje'
+            : days === 1
+              ? 'ontem'
+              : days < 30
+                ? days + ' dias atrás'
+                : date.toLocaleDateString();
+
+        el('small', relative, row);
 
         const details = el('button', 'Detalhes', row);
         details.onclick = () => showStatus(item.id);
@@ -2107,7 +2232,6 @@
     previousFocus?.focus();
 
     trackEvent('modal_closed');
-  }
 
   fab.onclick = open;
   closeButton.onclick = close;
@@ -2133,8 +2257,12 @@
   retryButton.onclick = () => boot();
   analyticsButton.onclick = () => setAnalyticsEnabled(!analyticsEnabled);
 
-  refresh.onclick = () => {
-    if (dirty && !window.confirm('Atualizar o contexto do WME? Campos já preenchidos serão preservados.')) return;
+  refresh.onclick = async () => {
+    if (dirty && !(await confirmDialog(
+      'Atualizar contexto',
+      'Atualizar o contexto do WME? Campos já preenchidos serão preservados.',
+      'Atualizar'
+    ))) return;
 
     capture();
   };
@@ -2152,7 +2280,11 @@
   checkButton.onclick = checkPending;
 
   clearButton.onclick = async () => {
-    if (!definition || !window.confirm('Apagar o rascunho deste formulário?')) return;
+    if (!definition || !(await confirmDialog(
+      'Apagar rascunho',
+      'Apagar o rascunho deste formulário?',
+      'Apagar'
+    ))) return;
 
     clearTimeout(saveTimer);
     await store.del(await draftKey());
@@ -2325,7 +2457,7 @@
       eventHandler: () => {
         const count = selection().length;
 
-        fab.textContent = 'Toolbox · Solicitações' + (count ? ' (' + count + ')' : '');
+        fabLabel.textContent = 'Toolbox · Solicitações' + (count ? ' (' + count + ')' : '');
 
         if (!overlay.hidden) {
           contextNotice.textContent = 'A seleção pode ter mudado. Use Atualizar para recapturar.';
