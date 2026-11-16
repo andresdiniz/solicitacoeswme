@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.11
+// @version      4.2.5.12
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.11';
+  const VERSION = '4.2.5.12';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,7 +194,7 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.11',
+        version: '4.2.5.12',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -464,34 +464,67 @@
       }
       return found;
     }
+    function composedParent(node) {
+      return node.parentElement || node.getRootNode()?.host || null;
+    }
+    function controlLabel(node) {
+      return [...node.attributes || []].filter(a => /^(id|class|title|aria-label|name|data-.+|icon|icon-name)$/.test(a.name))
+        .map(a => a.value).join(' ');
+    }
     function findAnchor() {
       const candidates=[];
       for (const node of elements()) {
         if (node===host || root.contains(node)) continue;
-        const label=[node.id,node.getAttribute('class'),node.getAttribute('title'),node.getAttribute('aria-label'),node.getAttribute('data-testid'),node.getAttribute('data-tooltip')].filter(Boolean).join(' ');
-        if (!/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(label)) continue;
-        const control=node.closest('button,a,[role="button"],wz-button') || node;
+        // Waze's internal button has generic classes. Inspect its composed
+        // ancestors and their light-DOM icons, not just the internal button.
+        if (!node.matches('button,a,[role="button"],wz-button,wz-icon-button')) continue;
+        let control=node;
+        const chain=[];
+        for(let n=node,i=0;n && i<4;n=composedParent(n),i++) {
+          chain.push(n);
+          if (n.matches?.('wz-button,wz-icon-button')) control=n;
+        }
+        const labels=chain.map(controlLabel);
+        for(const parent of chain.slice(0,3)) {
+          for(const icon of parent.querySelectorAll('i,svg,use,wz-icon,[slot],[icon],[icon-name],[data-icon]')) {
+            labels.push(controlLabel(icon));
+            labels.push(icon.getAttribute('href') || icon.getAttribute('xlink:href') || '');
+          }
+        }
+        const label=labels.join(' ');
+        const explicit=/perma[-_ ]?link|permanent[-_ ]?link|link permanente/i.test(label);
+        const linkIcon=/(?:^|[\s_#/-])(?:link|chain|insert_link)(?:$|[\s_#/-])/i.test(label);
+        if (!explicit && !linkIcon) continue;
         const r=control.getBoundingClientRect();
-        if (r.width<15 || r.width>100 || r.height<15 || r.height>80 || r.left<innerWidth*.5 || r.bottom<=0 || r.bottom>innerHeight) continue;
+        if (r.width<15 || r.width>100 || r.height<15 || r.height>80 || r.left<innerWidth*.65 || r.top<45 || r.bottom>innerHeight-65) continue;
         if (getComputedStyle(control).visibility==='hidden') continue;
-        candidates.push(control);
+        candidates.push({control,score:(explicit?1000:100)+(r.right>innerWidth-120?50:0)-r.top/1000});
       }
-      return candidates[0] || null;
+      candidates.sort((a,b)=>b.score-a.score);
+      return candidates[0]?.control || null;
+    }
+    function showFallback() {
+      // Visible, fixed upper-right fallback, never in the lower zoom area.
+      host.style.setProperty('--tw-link-x',Math.max(4,innerWidth-56)+'px');
+      host.style.setProperty('--tw-link-y','190px');
+      fab.removeAttribute('data-anchor-missing');
+      fab.dataset.positionMode='fallback';
     }
     function place() {
       frame=null;
       if (!anchor?.isConnected) {
-        fab.setAttribute('data-anchor-missing','');
+        showFallback();
         return;
       }
       const r=anchor.getBoundingClientRect();
-      if (!r.width || !r.height) {fab.setAttribute('data-anchor-missing','');return;}
+      if (!r.width || !r.height) {showFallback();return;}
       const x=Math.max(4,Math.min(innerWidth-40,r.left+(r.width-36)/2));
       const y=r.bottom+gap;
-      if (y+28>innerHeight) {fab.setAttribute('data-anchor-missing','');return;}
+      if (y+28>innerHeight) {showFallback();return;}
       host.style.setProperty('--tw-link-x',Math.round(x)+'px');
       host.style.setProperty('--tw-link-y',Math.round(y)+'px');
       fab.removeAttribute('data-anchor-missing');
+      fab.dataset.positionMode='permalink';
     }
     function schedule() {if(frame===null) frame=requestAnimationFrame(place);}
     function attach(node) {
@@ -509,6 +542,7 @@
       if(node) {
         attach(node);discovery?.disconnect();discovery=null;clearTimeout(discoveryTimeout);return true;
       }
+      showFallback();
       return false;
     }
     function start() {
@@ -522,7 +556,7 @@
       clearTimeout(discoveryTimeout);
       discoveryTimeout=setTimeout(()=>{
         discovery?.disconnect();discovery=null;clearTimeout(pendingTimer);pendingTimer=null;
-        if(!anchor) warn('Ícone oculto: controle de permalink não identificado. Envie o HTML do botão de link para ajustar o seletor.');
+        if(!anchor) warn('Usando posição alternativa: permalink não identificado. Envie o HTML do componente wz-button externo e do ícone, não apenas do button interno.');
       },30000);
     }
     addEventListener('resize',()=>{if(anchor?.isConnected) schedule();else start();},{passive:true});
@@ -2685,6 +2719,7 @@
   PAGE.twDiagnostico = () => {
     const diagnostics = {
       version: VERSION,
+      launcherPosition: fab.dataset.positionMode || 'initializing',
       sdk: Boolean(sdk),
       conn,
       connected: Boolean(identity),
