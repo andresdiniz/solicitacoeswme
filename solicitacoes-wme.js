@@ -1,8 +1,8 @@
 // ==UserScript==
-// @name         Comunidade BR — Central de solicitações WME
+// @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.1
-// @description  Solicitações ao site ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
+// @version      4.2.5.2
+// @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
 // @supportURL   https://github.com/andresdiniz/ToolboxWaze/issues
@@ -30,10 +30,10 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.1';
+  const VERSION = '4.2.5.2';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
-  const PREFIX = '[ComunidadeBR]';
+  const PREFIX = '[ToolboxWaze]';
 
   // Telemetria opcional. Preencha estas constantes para ativar o GA4.
   // Sem elas, apenas o monitoramento próprio permanece disponível.
@@ -187,13 +187,13 @@
   }
 
   const alerts = (await WmeAlertSystem.ready()).register({
-    scriptId: 'ComunidadeBR-solicitacoes',
-    scriptName: 'Comunidade BR — Central de solicitações WME',
+    scriptId: 'toolboxwaze-solicitacoes',
+    scriptName: 'ToolboxWaze — Central de solicitações WME',
     version: VERSION,
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.1',
+        version: '4.2.5.2',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
@@ -292,9 +292,9 @@
   .layout{display:grid;grid-template-columns:270px 1fr;gap:18px;align-items:start}
   .card{padding:16px;border:1px solid #dce9e1;border-radius:12px;background:#fff;margin-bottom:14px}
   .green{background:#eef8f2}
-  .types{display:grid;grid-template-columns:repeat(2,minmax(0,1fr));gap:8px}
-  .types button{text-align:left;font-size:13px}
-  .types button.active{background:#e4f5eb;border-color:#198754;box-shadow:0 0 0 2px #19875422}
+  .types{display:block}
+  .types select{width:100%;padding:10px;border:1px solid #cbded5;border-radius:8px;background:#fff;color:#183c2b;font-weight:600}
+  .types select:focus-visible{outline:3px solid #71bca0;outline-offset:2px}
   label{display:block;font-weight:600;margin-bottom:6px}
   input:not([type=checkbox]):not([type=radio]),select,textarea{width:100%;border:1px solid #cbded5;border-radius:8px;padding:10px;background:white;color:#183c2b}
   textarea{min-height:95px;resize:vertical}
@@ -394,7 +394,7 @@
   const title = el('h2', 'Solicitações', header);
   title.id = 'tw3-title';
 
-  el('span', 'Comunidade BR · ' + VERSION, header, 'muted');
+  el('span', 'ToolboxWaze · ' + VERSION, header, 'muted');
   el('span', null, header, 'spacer');
 
   const mineButton = el('button', 'Minhas', header);
@@ -429,8 +429,8 @@
   const stepsList = el('ol', null, stepsCard);
 
   const STEPS = [
-    ['Informe seu e-mail', 'Usamos o apelido detectado no WME e o seu e-mail para criar (ou localizar) sua conta no site ToolboxWaze.'],
-    ['Confirme no e-mail', 'Abra a mensagem do site ToolboxWaze e clique em “Confirmar e-mail”. O link vale 60 minutos e só funciona uma vez.'],
+    ['Informe seu e-mail', 'Usamos o apelido detectado no WME e o seu e-mail para criar (ou localizar) sua conta no ToolboxWaze.'],
+    ['Confirme no e-mail', 'Abra a mensagem do ToolboxWaze e clique em “Confirmar e-mail”. O link vale 60 minutos e só funciona uma vez.'],
     ['Volte ao WME', 'O script detecta a confirmação sozinho (ou use “Já confirmei”). Este navegador fica conectado.'],
     ['Escolha o formulário e envie', 'Depois disso você não precisa repetir o processo neste navegador.']
   ];
@@ -489,7 +489,7 @@
   const consent = el('label', null, registerCard, 'choice');
   const consentBox = el('input', null, consent);
   consentBox.type = 'checkbox';
-  el('span', 'Concordo em enviar meu e-mail, meu apelido do WME e os dados das solicitações ao site ToolboxWaze.', consent);
+  el('span', 'Concordo em enviar meu e-mail, meu apelido do WME e os dados das solicitações ao ToolboxWaze.', consent);
 
   const registerRow = el('div', null, registerCard, 'row');
   registerRow.style.marginTop = '12px';
@@ -537,7 +537,11 @@
 
   const typeCard = el('section', null, main, 'card');
   el('h3', '1. Escolha a solicitação', typeCard);
-  const typeList = el('div', null, typeCard, 'types');
+  const typeList = el('select', null, typeCard, 'types');
+  typeList.setAttribute('aria-label', 'Escolher tipo de solicitação');
+
+  const typePlaceholder = el('option', 'Escolher solicitação…', typeList);
+  typePlaceholder.value = '';
 
   const formCard = el('section', null, main, 'card');
   const formTitle = el('h3', '2. Dados da solicitação', formCard);
@@ -698,7 +702,7 @@
                 ) || []
             )[1] || '(não informado)';
         
-            console.group('[Comunidade BR DIAGNOSTICO-V1] HTTP ' + response.status);
+            console.group('[ToolboxWaze DIAGNOSTICO-V1] HTTP ' + response.status);
         
             console.error('Método:', method);
             console.error('URL enviada:', hideToken(API + path));
@@ -769,6 +773,16 @@
         ontimeout: () => reject(Object.assign(new Error('Tempo esgotado. Consulte o resultado antes de reenviar.'), { uncertain: true }))
       });
     });
+  }
+
+  function getUserState() {
+    try {
+      const info = sdk?.State?.getUserInfo?.();
+
+      return info?.stateCode || info?.regionCode || info?.state || info?.region || null;
+    } catch {
+      return null;
+    }
   }
 
   function selection() {
@@ -903,6 +917,7 @@
     if (path === 'wme.venueName') return context?.objetos.find(object => object.type === 'venue')?.name;
     if (path === 'wme.objectLockLevel') return context?.objetos.length === 1 ? context.objetos[0].lockLevel : null;
     if (path === 'account.wazeNickname') return identity?.wazeNickname;
+    if (path === 'wme.userState') return getUserState();
 
     return null;
   }
@@ -1142,7 +1157,7 @@
           const text = String(answers[field.chave] ?? '').trim();
 
           if (!text) {
-            hint.textContent = 'Exigido: link do WME com zoom ≥ ' + (field.zoomMinimo || 15) + ' (vê-se mais pontos e detalhes do mapa).';
+            hint.textContent = 'Exigido: link do WME com zoom ≥ ' + (field.zoomMinimo || 15) + '. A detecção automática usa o segmento selecionado; para áreas maiores, como imagem de satélite, usa a área visível do WME quando o script está aberto.';
             hint.className = 'hint';
             return;
           }
@@ -1170,6 +1185,10 @@
 
             context = collect();
             summary.textContent = summarize();
+
+            if (!context.totalSelecionados) {
+              notice('Nenhum segmento selecionado. Para solicitações de segmento, selecione o trecho no WME; para áreas maiores, será usada a área visível do mapa.', 'info');
+            }
 
             const minimumZoom = field.zoomMinimo || 15;
 
@@ -1395,9 +1414,7 @@
       dirty = false;
       restoring = false;
 
-      for (const button of typeList.children) {
-        button.classList.toggle('active', button.dataset.slug === slug);
-      }
+      typeList.value = slug;
 
       log('Campos recebidos', {
         slug,
@@ -1637,11 +1654,21 @@
     accountText.textContent = (identity.nome || identity.wazeNickname || 'Usuário') + ' · ' + (identity.wazeNickname || '');
     typeList.replaceChildren();
 
+    const placeholder = el('option', 'Escolher solicitação…', typeList);
+    placeholder.value = '';
+
     for (const form of forms) {
-      const button = el('button', form.nome, typeList);
-      button.dataset.slug = form.slug;
-      button.onclick = () => choose(form.slug);
+      const option = el('option', form.nome, typeList);
+      option.value = form.slug;
     }
+
+    typeList.onchange = () => {
+      const slug = typeList.value;
+
+      if (slug) {
+        choose(slug);
+      }
+    };
 
     setConn('ativo');
     settings.hidden = true;
@@ -1810,7 +1837,7 @@
 
     if (confirmFirst && !(await confirmDialog(
       'Desconectar',
-      'Desconectar este navegador do site ToolboxWaze? Você precisará confirmar o e-mail novamente.',
+      'Desconectar este navegador do ToolboxWaze? Você precisará confirmar o e-mail novamente.',
       'Desconectar'
     ))) {
       return;
@@ -1879,7 +1906,7 @@
         const url = requestUrl(data);
 
         if (url) {
-            const link = el('a', 'Abrir no site ToolboxWaze ↗', box);
+            const link = el('a', 'Abrir no ToolboxWaze ↗', box);
             link.href = url;
             link.target = '_blank';
             link.rel = 'noopener noreferrer';
@@ -1964,7 +1991,7 @@
           link.href = url;
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
-          link.title = 'Abrir solicitação #' + item.id + ' no site ToolboxWaze';
+          link.title = 'Abrir solicitação #' + item.id + ' no ToolboxWaze';
         }
       }
     } catch (error) {
@@ -2008,7 +2035,7 @@
         const url = new URL(data.solicitacao.url, BASE);
 
         if (url.origin === BASE) {
-          const link = el('a', ' Abrir no site ToolboxWaze', status);
+          const link = el('a', ' Abrir no ToolboxWaze', status);
           link.href = url.href;
           link.target = '_blank';
           link.rel = 'noopener noreferrer';
@@ -2233,6 +2260,7 @@
 
     trackEvent('modal_closed');
   }
+
   fab.onclick = open;
   closeButton.onclick = close;
   settingsButton.onclick = () => {
@@ -2440,8 +2468,8 @@
     await PAGE.SDK_INITIALIZED;
 
     sdk = PAGE.getWmeSdk({
-      scriptId: 'ComunidadeBR-solicitacoes',
-      scriptName: 'Comunidade BR — Solicitações'
+      scriptId: 'toolboxwaze-solicitacoes',
+      scriptName: 'ToolboxWaze — Solicitações'
     });
 
     if (!sdk.State.isReady()) {
@@ -2457,7 +2485,7 @@
       eventHandler: () => {
         const count = selection().length;
 
-        fabLabel.textContent = 'Comunidade BR · Solicitações' + (count ? ' (' + count + ')' : '');
+        fabLabel.textContent = 'Toolbox · Solicitações' + (count ? ' (' + count + ')' : '');
 
         if (!overlay.hidden) {
           contextNotice.textContent = 'A seleção pode ter mudado. Use Atualizar para recapturar.';
