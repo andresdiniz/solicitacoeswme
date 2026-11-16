@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Central de solicitações WME - Comunidade BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.2
+// @version      4.2.5.3
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -30,7 +30,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.2';
+  const VERSION = '4.2.5.3';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -188,12 +188,12 @@
 
   const alerts = (await WmeAlertSystem.ready()).register({
     scriptId: 'toolboxwaze-solicitacoes',
-    scriptName: 'ToolboxWaze — Central de solicitações WME',
+    scriptName: 'Comunidade BR — Central de solicitações WME',
     version: VERSION,
     changelog: {
       mode: 'bell',
       loader: async () => [{
-        version: '4.2.5.2',
+        version: '4.2.5.3',
         date: '2026-11-16',
         changes: {
           'pt-BR': '<p>Notificações no sino do WME sobre alterações nas suas solicitações (novo comentário ou mudança de status) enquanto você estiver conectado.</p>'
