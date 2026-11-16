@@ -1,5 +1,5 @@
 // ==UserScript==
-// @name         ToolboxWaze — Central de solicitações WME
+// @name         Central de solicitações WME - Comunidade BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
 // @version      4.2.5.2
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
@@ -33,7 +33,7 @@
   const VERSION = '4.2.5.2';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
-  const PREFIX = '[ToolboxWaze]';
+  const PREFIX = '[Comunidade BR]';
 
   // Telemetria opcional. Preencha estas constantes para ativar o GA4.
   // Sem elas, apenas o monitoramento próprio permanece disponível.
