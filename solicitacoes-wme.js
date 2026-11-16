@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         ToolboxWaze — Central de solicitações WME
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.1.1
+// @version      4.2.1.2
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
