@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.18
+// @version      4.2.5.19
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.18';
+  const VERSION = '4.2.5.19';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,6 +194,12 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
+        version: '4.2.5.19',
+        date: '2026-11-21',
+        changes: {
+          'pt-BR': '<p>Layout renovado: abas e contexto fixos, cartões e formulários mais claros, rodapé e tela cheia no celular.</p>'
+        }
+      }, {
         version: '4.2.5.18',
         date: '2026-11-16',
         changes: {
@@ -469,6 +475,74 @@
     .tw-comment{padding:13px 14px}
   }
   `;
+
+  /* ===== Layout v2 (somente CSS, sem alterar DOM/JS/SDK) ===== */
+  css.textContent += `
+  :host{--tw-bg:#f3f7f5;--tw-surface:#fff;--tw-border:#dbe7e0;--tw-text:#17332a;--tw-muted:#5a7066;--tw-brand:#176d4c;--tw-brand-hover:#125a3f;--tw-brand-soft:#eaf6ef;--tw-radius:12px;--tw-shadow:0 1px 2px #0b241d14,0 4px 14px #0b241d0d;color:var(--tw-text)}
+  .overlay{background:#0b241db8;backdrop-filter:blur(4px);padding:16px}
+  .dialog{width:min(1120px,96vw);height:min(860px,92vh);background:var(--tw-bg);border-radius:16px;box-shadow:0 28px 90px #0007}
+  header{padding:14px 20px;gap:12px;background:var(--tw-surface);border-bottom:1px solid var(--tw-border);flex-wrap:nowrap}
+  header h2{font-size:17px;font-weight:700;letter-spacing:-.01em}
+  header .muted{white-space:nowrap}
+  .close-x{width:34px;height:34px;border-radius:50%;border-color:transparent;background:#eef3f0;color:var(--tw-muted);display:grid;place-items:center}
+  .close-x:hover{background:#e0e9e4;color:var(--tw-text)}
+  .scroll{padding:0 20px 24px;scroll-behavior:smooth;scrollbar-width:thin;scrollbar-color:#b8cdc1 transparent}
+  .scroll>*{max-width:100%}
+  .tabbar{position:sticky;top:0;z-index:5;margin:0 -20px 16px;padding:12px 20px;gap:4px;background:var(--tw-bg);border-bottom:1px solid var(--tw-border);flex-wrap:nowrap;overflow-x:auto;scrollbar-width:none}
+  .tabbar::-webkit-scrollbar{display:none}
+  .tab{flex:none;border:0;background:transparent;color:var(--tw-muted);border-radius:8px;padding:8px 14px;font-weight:600;transition:background .15s,color .15s}
+  .tab:hover{background:#e4eee8;color:var(--tw-text)}
+  .tab.active{background:var(--tw-brand);color:#fff;box-shadow:0 1px 3px #176d4c55}
+  .layout{grid-template-columns:288px minmax(0,1fr);gap:20px}
+  .side{position:sticky;top:76px;max-height:calc(100% - 20px);align-self:start}
+  .card{background:var(--tw-surface);border:1px solid var(--tw-border);border-radius:var(--tw-radius);box-shadow:var(--tw-shadow);margin-bottom:16px}
+  .card:not(.tw-requests):not(.tw-detail){padding:20px}
+  .tw-requests,.tw-detail{border-radius:14px}
+  .card.green{background:linear-gradient(180deg,#f1faf5,#e8f5ee);border-color:#cfe6d8}
+  .card>h3,.card>.detail-head h3{font-size:12px;text-transform:uppercase;letter-spacing:.06em;color:var(--tw-muted);font-weight:700;margin:0 0 14px}
+  .tw-detail .detail-head h3{text-transform:none;letter-spacing:0;color:var(--tw-text);font-size:18px}
+  .side pre,.context-list{background:#ffffffa8;border:1px solid #d3e7da;border-radius:9px;padding:10px 12px;max-height:240px;scrollbar-width:thin}
+  .field{margin-bottom:22px}
+  .field>label,label{font-size:13px;font-weight:650;color:var(--tw-text)}
+  input:not([type=checkbox]):not([type=radio]),select,textarea{border:1px solid #c6d8cd;border-radius:9px;background:#fff;transition:border-color .15s,box-shadow .15s}
+  input:not([type=checkbox]):not([type=radio]):hover,select:hover,textarea:hover{border-color:#9dbfad}
+  input:not([type=checkbox]):not([type=radio]):focus,select:focus,textarea:focus{outline:0;border-color:var(--tw-brand);box-shadow:0 0 0 3px #176d4c26}
+  textarea{min-height:110px;line-height:1.55}
+  .choices{gap:8px}
+  .choice{border-radius:10px;padding:9px 12px;background:#fff;transition:border-color .15s,background .15s;cursor:pointer}
+  .choice:hover{border-color:#9dbfad}
+  .choice:has(input:checked){border-color:var(--tw-brand);background:var(--tw-brand-soft);box-shadow:inset 0 0 0 1px var(--tw-brand)}
+  button{border-radius:9px;transition:background .15s,border-color .15s,box-shadow .15s,transform .05s}
+  button:active:not(:disabled){transform:translateY(1px)}
+  .primary{background:var(--tw-brand);border-color:var(--tw-brand);box-shadow:0 1px 2px #176d4c55}
+  .primary:hover:not(:disabled){background:var(--tw-brand-hover);border-color:var(--tw-brand-hover)}
+  .status{border-radius:10px;border:1px solid #d3e4da;margin:14px 0}
+  .status.error{border-color:#f1c9c5}
+  .status.success{border-color:#bfe3cd}
+  .preview figure{border-radius:10px;background:#fff;box-shadow:var(--tw-shadow)}
+  .preview img{border-radius:6px}
+  .steps li{border-radius:11px;transition:border-color .15s,background .15s}
+  footer{position:relative;padding:12px 20px;background:var(--tw-surface);border-top:1px solid var(--tw-border);box-shadow:0 -4px 14px #0b241d0a;flex-wrap:nowrap}
+  footer .spacer{min-width:8px}
+  footer small{white-space:nowrap}
+  .confirm-box{border-radius:16px;padding:22px}
+  @media(max-width:900px){.layout{grid-template-columns:1fr}.side{position:static;max-height:none}}
+  @media(max-width:760px){
+  .overlay{padding:0}
+  .dialog{width:100vw;height:100dvh;border-radius:0}
+  header{padding:10px 14px}
+  header .muted{display:none}
+  .scroll{padding:0 12px 16px}
+  .tabbar{margin:0 -12px 12px;padding:10px 12px}
+  .card:not(.tw-requests):not(.tw-detail){padding:15px}
+  footer{padding:10px 12px;flex-wrap:wrap;justify-content:flex-end}
+  footer .spacer{display:none}
+  footer small{flex-basis:100%}
+  footer button{flex:1 1 auto}
+  }
+  @media(prefers-reduced-motion:reduce){*{transition:none!important;animation-duration:.01ms!important;scroll-behavior:auto!important}}
+  `;
+  /* ===== fim Layout v2 ===== */
 
   const fab = el('button', null, root, 'fab');
   fab.type = 'button';
