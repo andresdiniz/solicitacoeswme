@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.19
+// @version      4.2.5.20
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.19';
+  const VERSION = '4.2.5.20';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,6 +194,12 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
+        version: '4.2.5.20',
+        date: '2026-11-21',
+        changes: {
+          'pt-BR': '<p>Cole prints com Ctrl+V nos anexos; busca e filtros por status em Minhas solicitações; indicador de novidades; “Usar como modelo” em solicitações enviadas; placeholders mais claros.</p>'
+        }
+      }, {
         version: '4.2.5.19',
         date: '2026-11-21',
         changes: {
@@ -215,6 +221,7 @@
   alerts.notification.onAction('abrir-solicitacao', (notification) => {
     const url = notification?.data?.url;
     if (url) window.open(url, '_blank', 'noopener');
+    markRead(notification?.data?.id).catch(() => {});
   });
 
   const uid = () => crypto.randomUUID();
@@ -255,6 +262,16 @@
   let loadSerial = 0;
   let restoring = false;
   let saveTimer = null;
+  let mineItems = [];
+  let mineFilter = 'all';
+  let mineQuery = '';
+  let mineUi = null;
+  let templates = {};
+  let pendingTemplate = null;
+  let unread = {};
+  let unreadAccount = null;
+  let unreadPromise = null;
+  let openDetailId = null;
 
   const restoredPending = await store.get('tw3_pending', null);
   unresolved = restoredPending;
@@ -543,6 +560,28 @@
   @media(prefers-reduced-motion:reduce){*{transition:none!important;animation-duration:.01ms!important;scroll-behavior:auto!important}}
   `;
   /* ===== fim Layout v2 ===== */
+  /* ===== Melhorias v3: placeholders, filtros, novidades, anexos ===== */
+  css.textContent += `
+  input::placeholder,textarea::placeholder{color:#667970;opacity:1;font-weight:400}
+  select:has(option[value=""]:checked){color:#667970}
+  select option{color:#183c2b}
+  .mine-tools{display:flex;gap:10px 14px;flex-wrap:wrap;align-items:center;padding:14px 18px;background:#fff;border-bottom:1px solid #e5ece8}
+  .mine-search{flex:1 1 220px;min-width:180px;width:auto!important}
+  .mine-chips{display:flex;gap:6px;flex-wrap:wrap}
+  .chip{border-radius:999px;padding:6px 12px;font-size:12px;line-height:1.4;background:#fff;border:1px solid #cbded5;color:#163d2b}
+  .chip:hover{background:#eef6f1}
+  .chip[aria-pressed=true]{background:#176d4c;border-color:#176d4c;color:#fff}
+  .chip .n{margin-left:6px;opacity:.75;font-variant-numeric:tabular-nums}
+  .chip.link{border-style:dashed;color:#176d4c}
+  .mine-empty{margin:0;padding:24px;color:#465d55}
+  .mine-empty p{margin:0 0 12px}
+  .tab-badge{display:inline-grid;place-items:center;min-width:18px;height:18px;margin-left:7px;padding:0 5px;border-radius:9px;background:#d92d3a;color:#fff;font-size:11px;font-weight:700;line-height:1}
+  .tab.active .tab-badge{background:#fff;color:#176d4c}
+  .news-pill{display:inline-block;margin-left:8px;padding:2px 7px;border-radius:999px;background:#d92d3a;color:#fff;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase;vertical-align:middle}
+  .tw-requests .table tbody tr.has-news{box-shadow:inset 3px 0 0 #d92d3a}
+  @media(max-width:680px){.mine-tools{padding:0 0 12px;border:0;background:transparent}.tw-requests .table tbody tr.has-news{box-shadow:0 0 0 2px #d92d3a55}}
+  `;
+  /* ===== fim Melhorias v3 ===== */
 
   const fab = el('button', null, root, 'fab');
   fab.type = 'button';
@@ -1407,6 +1446,8 @@
           renderFields();
         };
 
+        el('small', 'Dica: cole um print com Ctrl+V.', box, 'hint');
+
         const list = el('div', null, box, 'preview');
 
         for (const [index, file] of (files[field.chave] || []).entries()) {
@@ -1721,6 +1762,16 @@
         }
       }
 
+      if (pendingTemplate && pendingTemplate.slug === slug) {
+        answers = templateAnswers(data, pendingTemplate.answers);
+
+        if (sdk) {
+          try {
+            context = collect();
+          } catch {}
+        }
+      }
+
       prefill();
       formTitle.textContent = data.nome;
       formDescription.textContent = data.descricao || '';
@@ -1791,6 +1842,7 @@
 
     tabMine.hidden = state !== 'ativo';
     tabSettings.hidden = state === 'ativo';
+    updateTabBadge();
     if (state === 'ativo' && currentTab === 'settings') currentTab = 'form';
     if (['registro', 'pendente', 'erro'].includes(state)) currentTab = 'settings';
     tabForm.classList.toggle('active', currentTab === 'form');
@@ -1923,6 +1975,8 @@
       const data = await api('GET', '/solicitacoes/alteracoes' + (cursor ? '?since=' + encodeURIComponent(cursor) : ''));
       if (!identity || String(identity.id) !== accountId || credential !== token) return;
       const seen = await store.get(key, {});
+      await ensureUnread();
+      let unreadChanged = false;
       for (const item of (data.alteracoes || [])) {
         const version = item.atualizadoEm;
         if (item.id == null || !version) continue;
@@ -1939,6 +1993,15 @@
           buttonText: 'Abrir', action: 'abrir-solicitacao',
           data: { id: item.id, url: requestUrl(item) }
         });
+        if (unreadAccount === accountId && !(!detailCard.hidden && String(openDetailId) === id)) {
+          unread[id] = version;
+          unreadChanged = true;
+        }
+      }
+      if (unreadChanged && unreadAccount === accountId) {
+        await store.set(unreadKeyFor(accountId), unread);
+        updateTabBadge();
+        markUnreadRows();
       }
       if (data.servidorEm) {
         lastSeen = data.servidorEm;
@@ -2001,6 +2064,7 @@
     };
 
     setConn('ativo');
+    ensureUnread().catch(() => {});
     settings.hidden = true;
     syncSteps();
 
@@ -2211,7 +2275,350 @@
     }
   }
 
+  // ===== Novidades (não lidas) =====
+  function unreadKeyFor(accountId) {
+    return 'tw_unread_v1_' + accountId;
+  }
+
+  function unreadCount() {
+    return Object.keys(unread).length;
+  }
+
+  function updateTabBadge() {
+    const count = unreadCount();
+
+    tabMine.replaceChildren(document.createTextNode('Minhas solicitações'));
+
+    if (count > 0) el('span', count > 99 ? '99+' : String(count), tabMine, 'tab-badge');
+
+    tabMine.setAttribute(
+      'aria-label',
+      count > 0
+        ? 'Minhas solicitações, ' + count + (count === 1 ? ' com novidade' : ' com novidades')
+        : 'Minhas solicitações'
+    );
+  }
+
+  function ensureUnread() {
+    if (!identity) return Promise.resolve();
+
+    const accountId = String(identity.id);
+
+    if (unreadAccount !== accountId) {
+      unreadAccount = accountId;
+      unread = {};
+      unreadPromise = store.get(unreadKeyFor(accountId), {})
+        .then(saved => {
+          if (unreadAccount === accountId) unread = saved && typeof saved === 'object' ? saved : {};
+          updateTabBadge();
+        })
+        .catch(() => {});
+    }
+
+    return unreadPromise || Promise.resolve();
+  }
+
+  function markUnreadRows() {
+    for (const row of mineList.querySelectorAll('tr[data-id]')) {
+      const isNew = Object.hasOwn(unread, row.dataset.id);
+      const cell = row.children[2];
+      const pill = cell?.querySelector('.news-pill');
+
+      row.classList.toggle('has-news', isNew);
+
+      if (isNew && !pill && cell) el('span', 'Novo', cell, 'news-pill');
+      else if (!isNew && pill) pill.remove();
+    }
+
+    updateChips();
+  }
+
+  async function markRead(id) {
+    if (id == null) return;
+
+    await ensureUnread();
+
+    const key = String(id);
+
+    if (!Object.hasOwn(unread, key) || !identity) return;
+
+    delete unread[key];
+    await store.set(unreadKeyFor(String(identity.id)), unread);
+    updateTabBadge();
+    markUnreadRows();
+  }
+
+  async function markAllRead() {
+    await ensureUnread();
+
+    if (!identity || !unreadCount()) return;
+
+    unread = {};
+    await store.set(unreadKeyFor(String(identity.id)), unread);
+    updateTabBadge();
+
+    if (mineFilter === 'news') mineFilter = 'all';
+
+    drawMine();
+    updateChips();
+  }
+
+  // ===== Modelos (respostas de solicitações já enviadas, guardadas só neste navegador) =====
+  async function loadTemplates() {
+    if (!identity) {
+      templates = {};
+      return;
+    }
+
+    const saved = await store.get('tw_templates_v1_' + String(identity.id), {});
+
+    templates = saved && typeof saved === 'object' ? saved : {};
+  }
+
+  async function saveTemplate(data, payload) {
+    const id = data?.solicitacao?.id;
+
+    if (id == null || !identity || !definition) return;
+
+    const key = 'tw_templates_v1_' + String(identity.id);
+    const saved = await store.get(key, {});
+    const all = saved && typeof saved === 'object' ? saved : {};
+
+    all[String(id)] = {
+      slug: definition.slug,
+      nome: definition.nome || definition.slug,
+      answers: structuredClone(payload.respostas),
+      savedAt: Date.now()
+    };
+
+    const ids = Object.keys(all).sort((a, b) => (all[b].savedAt || 0) - (all[a].savedAt || 0));
+
+    for (const old of ids.slice(30)) delete all[old];
+
+    await store.set(key, all);
+  }
+
+  // Copia só o que é do usuário: campos preenchidos pelo contexto do WME, permalinks,
+  // anexos e confirmações obrigatórias ficam de fora para serem refeitos.
+  function templateAnswers(def, saved) {
+    const result = {};
+
+    for (const field of def.campos) {
+      if (field.tipo === 'file' || field.preenchimento || field.validacao === 'permalink') continue;
+      if (field.valorObrigatorio !== undefined) continue;
+      if (!saved || !Object.hasOwn(saved, field.chave)) continue;
+
+      const value = saved[field.chave];
+
+      if (['select', 'radio'].includes(field.tipo) && !(field.opcoes || []).some(option => option.value === value)) continue;
+
+      result[field.chave] = value;
+    }
+
+    return result;
+  }
+
+  async function useTemplate(id) {
+    if (busy || unresolved || !identity) return;
+
+    const tpl = templates[String(id)];
+
+    if (!tpl) return;
+
+    if (!forms.some(form => form.slug === tpl.slug)) {
+      notice('O formulário desta solicitação não está mais disponível.', 'error');
+      return;
+    }
+
+    const draft = await store.get('tw3_draft_' + String(identity.id) + '_' + tpl.slug);
+    const hasDraft = Boolean(
+      draft &&
+      Date.now() - draft.updatedAt < 7 * 86400000 &&
+      Object.keys(draft.answers || {}).length
+    );
+
+    if (
+      (hasDraft || (dirty && definition?.slug === tpl.slug)) &&
+      !(await confirmDialog(
+        'Usar como modelo',
+        'Já existe um rascunho deste formulário. Ele será substituído pelas respostas da solicitação #' + id + '. Continuar?',
+        'Usar modelo'
+      ))
+    ) {
+      return;
+    }
+
+    pendingTemplate = { slug: tpl.slug, answers: tpl.answers };
+    showTab('form');
+
+    try {
+      await choose(tpl.slug);
+    } finally {
+      pendingTemplate = null;
+    }
+
+    if (definition?.slug === tpl.slug) {
+      dirty = true;
+      await saveNow();
+      scroll.scrollTop = 0;
+      notice('Modelo da solicitação #' + id + ' aplicado. Revise os campos: o contexto do WME foi recapturado e os anexos precisam ser adicionados de novo.', 'success');
+    }
+  }
+
+  // ===== Colar print (Ctrl+V) nos campos de anexo =====
+  const PASTE_EXT = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/webp': 'webp', 'image/gif': 'gif' };
+
+  function pickFileField(path) {
+    const fields = (definition?.campos || []).filter(field => field.tipo === 'file' && visible(field));
+    const box = path.find(node => node && node.classList && node.dataset && node.classList.contains('field') && node.dataset.key);
+    const hit = box && fields.find(field => field.chave === box.dataset.key);
+
+    return hit || fields.find(field => (files[field.chave] || []).length < (field.maxArquivos || 1)) || fields[0] || null;
+  }
+
+  // Se a imagem passar do limite do campo, tenta reencodar (webp/jpeg) antes de desistir.
+  async function fitImage(file, maxBytes, allowed) {
+    if (file.size <= maxBytes) return file;
+
+    const type = ['image/webp', 'image/jpeg'].find(item => allowed.includes(item));
+
+    if (!type || typeof createImageBitmap !== 'function') return null;
+
+    let bitmap;
+
+    try {
+      bitmap = await createImageBitmap(file);
+    } catch {
+      return null;
+    }
+
+    try {
+      const base = file.name.replace(/\.[^.]+$/, '');
+
+      for (const scale of [1, 0.8, 0.6, 0.45]) {
+        const canvas = document.createElement('canvas');
+
+        canvas.width = Math.max(1, Math.round(bitmap.width * scale));
+        canvas.height = Math.max(1, Math.round(bitmap.height * scale));
+
+        const ctx = canvas.getContext('2d');
+
+        ctx.fillStyle = '#fff';
+        ctx.fillRect(0, 0, canvas.width, canvas.height);
+        ctx.drawImage(bitmap, 0, 0, canvas.width, canvas.height);
+
+        for (const quality of [0.9, 0.8, 0.7, 0.6]) {
+          const blob = await new Promise(resolve => canvas.toBlob(resolve, type, quality));
+
+          if (blob && blob.type === type && blob.size <= maxBytes) {
+            return new File([blob], base + '.' + PASTE_EXT[type], { type });
+          }
+        }
+      }
+    } finally {
+      bitmap.close?.();
+    }
+
+    return null;
+  }
+
+  async function pasteImages(field, images) {
+    const allowed = field.mimeTypes || ['image/jpeg', 'image/png', 'image/webp'];
+    const maxBytes = field.maxBytes || 1048576;
+    const limit = field.maxArquivos || 1;
+    const pad = number => String(number).padStart(2, '0');
+    const now = new Date();
+    const stamp = now.getFullYear() + pad(now.getMonth() + 1) + pad(now.getDate()) + '-' +
+      pad(now.getHours()) + pad(now.getMinutes()) + pad(now.getSeconds());
+    const ready = [];
+    const problems = [];
+
+    for (const [index, image] of images.entries()) {
+      if (!allowed.includes(image.type)) {
+        problems.push('formato ' + (image.type || 'desconhecido') + ' não permitido');
+        continue;
+      }
+
+      const named = new File(
+        [image],
+        'print-' + stamp + (index ? '-' + (index + 1) : '') + '.' + (PASTE_EXT[image.type] || 'png'),
+        { type: image.type }
+      );
+      const fitted = await fitImage(named, maxBytes, allowed);
+
+      if (!fitted) {
+        problems.push('imagem maior que ' + Math.round(maxBytes / 1024) + ' KB');
+        continue;
+      }
+
+      ready.push(fitted);
+    }
+
+    if (!ready.length) {
+      notice('Não foi possível anexar: ' + problems.join('; ') + '.', 'error');
+      return;
+    }
+
+    const current = limit > 1 ? (files[field.chave] || []) : [];
+    const added = ready.slice(0, Math.max(0, limit - current.length));
+
+    if (!added.length) {
+      notice('Este campo aceita no máximo ' + limit + ' arquivo(s). Remova um para colar outro.', 'error');
+      return;
+    }
+
+    files[field.chave] = current.concat(added);
+    dirty = true;
+    renderFields();
+
+    const skipped = ready.length - added.length + problems.length;
+
+    notice(
+      'Imagem colada em “' + field.label + '” (' + files[field.chave].length + '/' + limit + ').' +
+        (skipped ? ' ' + skipped + ' não adicionada(s).' : ''),
+      skipped ? 'error' : 'success'
+    );
+
+    fieldArea.querySelector('[data-key="' + field.chave + '"]')?.scrollIntoView?.({ block: 'nearest' });
+  }
+
+  function handlePaste(event) {
+    if (overlay.hidden || currentTab !== 'form' || conn !== 'ativo' || !definition) return;
+
+    const items = Array.from(event.clipboardData?.items || []);
+    const images = items
+      .filter(item => item.kind === 'file' && /^image\//.test(item.type))
+      .map(item => item.getAsFile())
+      .filter(Boolean);
+
+    if (!images.length) return;
+
+    const path = event.composedPath();
+    const typing = Boolean(path[0]?.matches?.('textarea,input:not([type=checkbox]):not([type=radio]):not([type=file])'));
+
+    // Colar texto num campo de texto continua funcionando normalmente.
+    if (typing && items.some(item => item.kind === 'string' && item.type === 'text/plain')) return;
+
+    event.preventDefault();
+    event.stopPropagation();
+
+    if (busy) return;
+
+    const field = pickFileField(path);
+
+    if (!field) {
+      notice('Este formulário não tem campo de anexo.', 'error');
+      return;
+    }
+
+    pasteImages(field, images).catch(error => {
+      warn('Colar imagem:', error.message);
+      notice('Não foi possível colar a imagem.', 'error');
+    });
+  }
+
   function showMineList() {
+    openDetailId = null;
     detailCard.hidden = true;
     mineCard.hidden = false;
     detailTitle.textContent = 'Minhas solicitações';
@@ -2220,6 +2627,8 @@
 
   async function showStatus(id) {
     currentTab = 'mine';
+    openDetailId = id;
+    markRead(id).catch(() => {});
     mineCard.hidden = true;
     detailCard.hidden = false;
     detailTitle.textContent = 'Solicitação #' + id;
@@ -2269,69 +2678,219 @@
     }
 }
 
+  const MINE_FILTERS = [
+    ['all', 'Todas'],
+    ['news', 'Com novidades'],
+    ['open', 'Abertas'],
+    ['pending', 'Pendentes'],
+    ['done', 'Concluídas'],
+    ['rejected', 'Recusadas']
+  ];
+
+  function plain(value) {
+    return String(value ?? '').normalize('NFD').replace(/[\u0300-\u036f]/g, '').toLowerCase();
+  }
+
+  function statusClassOf(item) {
+    const statusKey = String(item.statusLabel || item.status || '').toLowerCase();
+
+    return statusKey.includes('conclu') || statusKey.includes('resolvid')
+      ? 'done'
+      : statusKey.includes('recus') || statusKey.includes('rejeit')
+        ? 'rejected'
+        : statusKey.includes('pend') || statusKey.includes('aguard')
+          ? 'pending'
+          : 'open';
+  }
+
+  function matchesMine(item) {
+    if (mineFilter === 'news') {
+      if (!Object.hasOwn(unread, String(item.id))) return false;
+    } else if (mineFilter !== 'all' && statusClassOf(item) !== mineFilter) {
+      return false;
+    }
+
+    const query = plain(mineQuery).trim().replace(/^#/, '');
+
+    if (!query) return true;
+
+    return plain([item.id, item.formulario, item.tipoLabel, item.statusLabel, item.status].filter(Boolean).join(' ')).includes(query);
+  }
+
+  function updateChips() {
+    if (!mineUi) return;
+
+    const counts = { all: mineItems.length, news: 0, open: 0, pending: 0, done: 0, rejected: 0 };
+
+    for (const item of mineItems) {
+      counts[statusClassOf(item)]++;
+      if (Object.hasOwn(unread, String(item.id))) counts.news++;
+    }
+
+    mineUi.chips.replaceChildren();
+
+    for (const [key, label] of MINE_FILTERS) {
+      if (key !== 'all' && key !== mineFilter && counts[key] === 0) continue;
+
+      const chip = el('button', label, mineUi.chips, 'chip');
+
+      chip.type = 'button';
+      chip.dataset.key = key;
+      chip.setAttribute('aria-pressed', String(mineFilter === key));
+      el('span', String(counts[key]), chip, 'n');
+
+      chip.onclick = () => {
+        mineFilter = key;
+        updateChips();
+        mineUi.chips.querySelector('[data-key="' + key + '"]')?.focus();
+        drawMine();
+      };
+    }
+
+    mineUi.markAll.hidden = unreadCount() === 0;
+  }
+
+  function buildMineToolbar() {
+    const tools = el('div', null, mineList, 'mine-tools');
+    const search = el('input', null, tools, 'mine-search');
+
+    search.type = 'search';
+    search.placeholder = 'Buscar por número, tipo ou status…';
+    search.setAttribute('aria-label', 'Buscar nas minhas solicitações');
+    search.value = mineQuery;
+    search.oninput = () => {
+      mineQuery = search.value;
+      drawMine();
+    };
+
+    const chips = el('div', null, tools, 'mine-chips');
+
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Filtrar por status');
+
+    const markAll = el('button', 'Marcar todas como lidas', tools, 'chip link');
+
+    markAll.type = 'button';
+    markAll.onclick = () => markAllRead();
+
+    const host = el('div', null, mineList);
+
+    mineUi = { search, chips, markAll, host };
+    updateChips();
+  }
+
+  function drawMine() {
+    if (!mineUi) return;
+
+    const rows = mineItems.filter(matchesMine);
+
+    mineUi.host.replaceChildren();
+
+    if (!rows.length) {
+      const empty = el('div', null, mineUi.host, 'mine-empty');
+      const clear = el('button', 'Limpar filtros', null);
+
+      el('p', 'Nenhuma solicitação encontrada com esses filtros.', empty);
+      empty.append(clear);
+      clear.type = 'button';
+      clear.onclick = () => {
+        mineFilter = 'all';
+        mineQuery = '';
+        mineUi.search.value = '';
+        updateChips();
+        drawMine();
+      };
+
+      return;
+    }
+
+    const table = el('table', null, mineUi.host, 'table');
+    const caption = el('caption', null, table);
+
+    caption.textContent = 'Minhas solicitações · ' + (
+      rows.length === mineItems.length ? rows.length + ' na lista' : rows.length + ' de ' + mineItems.length
+    );
+
+    const thead = el('thead', null, table);
+    const headRow = el('tr', null, thead);
+    const columns = ['ID', 'Tipo de solicitação', 'Status', 'Data', 'Ações'];
+
+    columns.forEach(label => {
+      el('th', label, headRow).scope = 'col';
+    });
+
+    const tbody = el('tbody', null, table);
+
+    for (const item of rows) {
+      const url = requestUrl(item);
+      const row = el('tr', null, tbody);
+      const isNew = Object.hasOwn(unread, String(item.id));
+
+      row.dataset.id = String(item.id);
+      row.classList.toggle('has-news', isNew);
+
+      el('td', '#' + item.id, row);
+      el('td', item.formulario || item.tipoLabel || 'Solicitação', row);
+
+      const statusCell = el('td', null, row);
+      const statusText = item.statusLabel || item.status || '';
+
+      el('span', statusText || '—', statusCell, 'mine-status ' + statusClassOf(item));
+
+      if (isNew) el('span', 'Novo', statusCell, 'news-pill');
+
+      const date = new Date(item.criadaEm);
+
+      el('td', Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(), row);
+
+      const actions = el('td', null, row, 'actions');
+      const details = el('button', 'Detalhes', actions);
+
+      details.onclick = () => showStatus(item.id);
+
+      if (url) {
+        const link = el('a', 'Abrir', actions);
+
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+        link.title = 'Abrir solicitação #' + item.id + ' no ToolboxWaze';
+        link.addEventListener('click', () => { markRead(item.id).catch(() => {}); });
+      }
+
+      if (templates[String(item.id)]) {
+        const reuse = el('button', 'Usar como modelo', actions);
+
+        reuse.title = 'Abrir um formulário novo com as respostas desta solicitação';
+        reuse.onclick = () => useTemplate(item.id);
+      }
+
+      Array.from(row.children).forEach((cell, index) => { cell.dataset.label = columns[index]; });
+      details.setAttribute('aria-label', 'Ver detalhes da solicitação #' + item.id);
+    }
+  }
+
   async function renderMine() {
     mineList.replaceChildren(el('p', 'Carregando…', null, 'muted'));
 
     try {
-      const data = await api('GET', '/solicitacoes');
+      await ensureUnread();
+
+      const [data] = await Promise.all([api('GET', '/solicitacoes'), loadTemplates()]);
+
+      mineItems = Array.isArray(data.solicitacoes) ? data.solicitacoes : [];
       mineList.replaceChildren();
 
-      if (!data.solicitacoes?.length) {
+      if (!mineItems.length) {
+        mineUi = null;
         el('p', 'Você ainda não enviou solicitações.', mineList, 'muted');
         return;
       }
 
-      const table = el('table', null, mineList, 'table');
-      const caption = el('caption', null, table);
-      caption.textContent = 'Minhas solicitações · ' + data.solicitacoes.length + ' na lista';
-      const thead = el('thead', null, table);
-      const headRow = el('tr', null, thead);
-
-      ['ID', 'Tipo de solicitação', 'Status', 'Data', 'Ações'].forEach(label => {
-        el('th', label, headRow).scope = 'col';
-      });
-
-      const tbody = el('tbody', null, table);
-
-      for (const item of data.solicitacoes) {
-        const url = requestUrl(item);
-        const row = el('tr', null, tbody);
-
-        el('td', '#' + item.id, row);
-        el('td', item.formulario || item.tipoLabel || 'Solicitação', row);
-
-        const statusCell = el('td', null, row);
-        const statusText = item.statusLabel || item.status || '';
-        const statusKey = String(statusText).toLowerCase();
-        const statusClass = statusKey.includes('conclu') || statusKey.includes('resolvid')
-          ? 'done'
-          : statusKey.includes('recus') || statusKey.includes('rejeit')
-            ? 'rejected'
-            : statusKey.includes('pend') || statusKey.includes('aguard')
-              ? 'pending'
-              : 'open';
-
-        el('span', statusText || '—', statusCell, 'mine-status ' + statusClass);
-
-        const date = new Date(item.criadaEm);
-        el('td', Number.isNaN(date.getTime()) ? '—' : date.toLocaleDateString(), row);
-
-        const actions = el('td', null, row, 'actions');
-        const details = el('button', 'Detalhes', actions);
-        details.onclick = () => showStatus(item.id);
-
-        if (url) {
-          const link = el('a', 'Abrir', actions);
-          link.href = url;
-          link.target = '_blank';
-          link.rel = 'noopener noreferrer';
-          link.title = 'Abrir solicitação #' + item.id + ' no ToolboxWaze';
-        }
-        const columns = ['ID', 'Tipo de solicitação', 'Status', 'Data', 'Ações'];
-        Array.from(row.children).forEach((cell,index) => { cell.dataset.label = columns[index]; });
-        details.setAttribute('aria-label', 'Ver detalhes da solicitação #' + item.id);
-      }
+      buildMineToolbar();
+      drawMine();
     } catch (error) {
+      mineUi = null;
       mineList.replaceChildren(el('p', error.message, null, 'error-text'));
       authLost(error);
     }
@@ -2488,6 +3047,13 @@
 
       const submissionStart = performance.now();
       const data = await api('POST', '/solicitacoes', body);
+
+      try {
+        await saveTemplate(data, payload);
+      } catch (error) {
+        warn('Modelo:', error.message);
+      }
+
       await result(data);
 
       trackEvent('request_created', {
@@ -2577,6 +3143,8 @@
     prefillNick();
 
     if (!identity) boot();
+    else if (conn === 'ativo') startAlertPoll();
+    ensureUnread().catch(() => {});
 
     closeButton.focus();
     updateBusy();
@@ -2756,6 +3324,8 @@
   for (const type of ['keydown', 'keypress', 'keyup']) {
     window.addEventListener(type, shieldKeyboard, { capture: true });
   }
+
+  document.addEventListener('paste', handlePaste, true);
 
   PAGE.twDiagnostico = () => {
     const diagnostics = {
