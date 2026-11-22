@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.20
+// @version      4.2.5.21
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.20';
+  const VERSION = '4.2.5.21';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,6 +194,12 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
+        version: '4.2.5.21',
+        date: '2026-11-22',
+        changes: {
+          'pt-BR': '<p>Nova aba “Tratativa”, visível só para quem tem permissão no ToolboxWaze: fila com filtros, detalhe com anexos e histórico, comentários (públicos e internos), mudança de status e “Ir ao local” no WME.</p>'
+        }
+      }, {
         version: '4.2.5.20',
         date: '2026-11-21',
         changes: {
@@ -272,6 +278,14 @@
   let unreadAccount = null;
   let unreadPromise = null;
   let openDetailId = null;
+  let capabilities = { tratar: false, admin: false, champ: false, tipos: null };
+  let tratar = { items: [], total: 0, pagina: 1, status: 'abertas', q: '', temMais: false };
+  let tratarUi = null;
+  let tratarResumo = null;
+  let tratarDetailId = null;
+  let tratarSeq = 0;
+  let tratarBusy = false;
+  let tratarUrls = [];
 
   const restoredPending = await store.get('tw3_pending', null);
   unresolved = restoredPending;
@@ -582,6 +596,34 @@
   @media(max-width:680px){.mine-tools{padding:0 0 12px;border:0;background:transparent}.tw-requests .table tbody tr.has-news{box-shadow:0 0 0 2px #d92d3a55}}
   `;
   /* ===== fim Melhorias v3 ===== */
+  /* ===== Tratativa (aba restrita) ===== */
+  css.textContent += `
+  .tw-tratar-detail .tw-detail-body{display:grid;gap:14px;padding:16px 18px}
+  .t-sec{border:1px solid #e1ebe5;border-radius:11px;padding:14px 16px;background:#fff;min-width:0}
+  .t-sec>h4{margin:0 0 10px;font-size:12px;letter-spacing:.06em;text-transform:uppercase;color:#5a7066}
+  .t-meta{display:flex;flex-wrap:wrap;gap:6px 16px;align-items:center;color:#465d55;font-size:13px}
+  .t-meta+.t-meta{margin-top:8px}
+  .t-kv{display:grid;grid-template-columns:minmax(110px,200px) minmax(0,1fr);gap:6px 14px;margin:0}
+  .t-kv dt{font-weight:650;color:#17332a}
+  .t-kv dd{margin:0;overflow-wrap:anywhere;white-space:pre-wrap}
+  .t-files{display:flex;flex-wrap:wrap;gap:10px}
+  .t-files figure{margin:0;width:176px}
+  .t-files img{display:block;width:100%;height:124px;object-fit:cover;border-radius:8px;border:1px solid #d3e4da;background:#f3f7f5;cursor:zoom-in}
+  .t-files small{display:block;margin-top:4px;color:#5a7066}
+  .t-thread{display:grid;gap:10px}
+  .t-msg{border:1px solid #e1ebe5;border-radius:11px;padding:10px 12px;background:#fff}
+  .t-msg.interno{background:#fff8e6;border-color:#f0dca0}
+  .t-msg .who{display:flex;flex-wrap:wrap;gap:4px 10px;align-items:center;margin-bottom:4px;font-size:12px;color:#5a7066}
+  .t-msg p{margin:0;white-space:pre-wrap;overflow-wrap:anywhere}
+  .t-pill{padding:1px 7px;border-radius:999px;background:#f0dca0;color:#5b4300;font-size:10px;font-weight:700;letter-spacing:.04em;text-transform:uppercase}
+  .t-hist{margin:0;padding-left:18px;color:#465d55;font-size:13px;display:grid;gap:4px}
+  .t-actions{display:grid;grid-template-columns:1fr 1fr;gap:14px}
+  .t-actions textarea{margin:8px 0}
+  .t-actions select{margin-bottom:8px}
+  .t-block{margin:0 0 10px;padding:9px 12px;border-radius:9px;background:#fff4e5;border:1px solid #f1d9ae;color:#6b4a0d}
+  @media(max-width:900px){.t-actions{grid-template-columns:1fr}.t-kv{grid-template-columns:1fr}.t-kv dt{margin-top:6px}}
+  `;
+  /* ===== fim Tratativa ===== */
 
   const fab = el('button', null, root, 'fab');
   fab.type = 'button';
@@ -665,9 +707,12 @@
   const tabBar = el('div', null, scroll, 'tabbar');
   const tabForm = el('button', 'Solicitações', tabBar, 'tab active');
   const tabMine = el('button', 'Minhas solicitações', tabBar, 'tab');
+  const tabTratar = el('button', 'Tratativa', tabBar, 'tab');
   const tabSettings = el('button', 'Conexão', tabBar, 'tab');
   tabForm.type = 'button';
   tabMine.type = 'button';
+  tabTratar.type = 'button';
+  tabTratar.hidden = true;
   tabSettings.type = 'button';
 
   let currentTab = 'form';
@@ -788,6 +833,18 @@
   const detailTitle = el('h3', 'Minhas solicitações', detailHead);
   const detailBody = el('div', null, detailCard, 'tw-detail-body');
 
+  const tratarCard = el('section', null, scroll, 'card tw-requests tw-tratar');
+  tratarCard.hidden = true;
+  const tratarList = el('div', null, tratarCard);
+
+  const tratarDetail = el('section', null, scroll, 'card tw-detail tw-tratar-detail');
+  tratarDetail.hidden = true;
+  const tratarDetailHead = el('div', null, tratarDetail, 'detail-head');
+  const tratarBack = el('button', '← Voltar à fila', tratarDetailHead, 'back');
+  tratarBack.type = 'button';
+  const tratarDetailTitle = el('h3', 'Tratativa', tratarDetailHead);
+  const tratarDetailBody = el('div', null, tratarDetail, 'tw-detail-body');
+
   const pendingBox = el('div', null, scroll, 'card');
   pendingBox.hidden = true;
   el('p', 'Há um envio sem resultado confirmado. Consulte antes de enviar novamente.', pendingBox);
@@ -880,10 +937,13 @@
   }
 
   function showTab(tab) {
+    if (tab === 'tratar' && !canTratar()) tab = 'form';
+
     currentTab = tab;
 
     tabForm.classList.toggle('active', tab === 'form');
     tabMine.classList.toggle('active', tab === 'mine');
+    tabTratar.classList.toggle('active', tab === 'tratar');
     tabSettings.classList.toggle('active', tab === 'settings');
 
     applyView();
@@ -893,9 +953,21 @@
     const isForm = currentTab === 'form';
     const isMine = currentTab === 'mine';
     const isSettings = currentTab === 'settings';
+    const isTratar = currentTab === 'tratar' && canTratar();
 
     mineCard.hidden = !isMine;
     detailCard.hidden = true;
+    tratarCard.hidden = !isTratar;
+    tratarDetail.hidden = true;
+
+    if (isTratar) {
+      tratarDetailId = null;
+      clearTratarUrls();
+      if (!tratarUi) startTratar();
+    } else if (tratarDetailId !== null) {
+      tratarDetailId = null;
+      clearTratarUrls();
+    }
     layout.hidden = !isForm || conn !== 'ativo';
     pendingBox.hidden = !isForm || !unresolved || conn !== 'ativo';
 
@@ -1072,7 +1144,7 @@
 
           if (shouldTrackApiTiming(path)) {
             trackTiming('api_request', duration, {
-              endpoint: path,
+              endpoint: path.split('?')[0],
               method,
               http_status: response.status
             });
@@ -1087,7 +1159,7 @@
 
           if (response.status < 200 || response.status >= 300) {
             trackEvent('api_error', {
-              endpoint: path,
+              endpoint: path.split('?')[0],
               method,
               http_status: response.status,
               error_code: data?.codigo || ''
@@ -1843,10 +1915,12 @@
     tabMine.hidden = state !== 'ativo';
     tabSettings.hidden = state === 'ativo';
     updateTabBadge();
+    updateTratarTab();
     if (state === 'ativo' && currentTab === 'settings') currentTab = 'form';
     if (['registro', 'pendente', 'erro'].includes(state)) currentTab = 'settings';
     tabForm.classList.toggle('active', currentTab === 'form');
     tabMine.classList.toggle('active', currentTab === 'mine');
+    tabTratar.classList.toggle('active', currentTab === 'tratar');
     tabSettings.classList.toggle('active', currentTab === 'settings');
 
     if (state === 'pendente') {
@@ -1909,6 +1983,8 @@
     await store.del(LEGACY_KEY);
 
     identity = null;
+    capabilities = normalizeCaps(null);
+    tratarReset();
     definition = null;
     forms = [];
     answers = {};
@@ -1950,6 +2026,7 @@
     if (!modalOpen || document.hidden || conn !== 'ativo') return;
     const tick = async () => {
       await checkAlerts();
+      refreshTratarResumo().catch(() => {});
       if (modalOpen && !document.hidden && conn === 'ativo') alertPollTimer = setTimeout(tick, 60000);
     };
     tick();
@@ -2017,6 +2094,8 @@
 
   async function applyBootstrap(data) {
     if (data.estado === 'pendente') {
+      capabilities = normalizeCaps(null);
+      tratarReset();
       identity = null;
       definition = null;
       forms = [];
@@ -2043,6 +2122,8 @@
 
     identity = data.usuario;
     forms = data.formularios;
+    capabilities = normalizeCaps(data.capacidades);
+    tratarReset();
 
     accountText.textContent = (identity.nome || identity.wazeNickname || 'Usuário') + ' · ' + (identity.wazeNickname || '');
     typeList.replaceChildren();
@@ -2617,6 +2698,684 @@
     });
   }
 
+  // ===== Tratativa: aba visível só para quem o servidor autoriza =====
+  // A permissão real é decidida pela API em cada chamada. Aqui só se decide
+  // se a interface aparece, a partir de `capacidades` vindo do /bootstrap.
+  const TRATAR_FILTROS = [
+    ['abertas', 'Abertas'],
+    ['pendente', 'Pendentes'],
+    ['em_analise', 'Em análise'],
+    ['em_andamento', 'Em andamento'],
+    ['aguardando', 'Aguardando'],
+    ['resolvida', 'Resolvidas'],
+    ['negada', 'Negadas'],
+    ['todas', 'Todas']
+  ];
+  const STATUS_FINAIS = ['resolvida', 'negada', 'cancelada'];
+
+  function normalizeCaps(value) {
+    return {
+      tratar: value?.tratar === true,
+      admin: value?.admin === true,
+      champ: value?.champ === true,
+      tipos: Array.isArray(value?.tipos) ? value.tipos.map(String) : null
+    };
+  }
+
+  function canTratar() {
+    return conn === 'ativo' && Boolean(identity) && capabilities.tratar === true;
+  }
+
+  function clearTratarUrls() {
+    for (const url of tratarUrls) URL.revokeObjectURL(url);
+    tratarUrls = [];
+  }
+
+  function tratarReset() {
+    tratarSeq++;
+    tratar = { items: [], total: 0, pagina: 1, status: 'abertas', q: '', temMais: false };
+    tratarUi = null;
+    tratarResumo = null;
+    tratarDetailId = null;
+    clearTratarUrls();
+    tratarList.replaceChildren();
+    tratarDetailBody.replaceChildren();
+  }
+
+  function renderTratarBadge() {
+    const pending = canTratar() ? Number(tratarResumo?.pendentes) || 0 : 0;
+
+    tabTratar.replaceChildren(document.createTextNode('Tratativa'));
+
+    if (pending > 0) el('span', pending > 99 ? '99+' : String(pending), tabTratar, 'tab-badge');
+
+    tabTratar.setAttribute(
+      'aria-label',
+      pending > 0 ? 'Tratativa, ' + pending + (pending === 1 ? ' pendente' : ' pendentes') : 'Tratativa'
+    );
+  }
+
+  function updateTratarTab() {
+    const allowed = canTratar();
+
+    tabTratar.hidden = !allowed;
+
+    if (!allowed) {
+      if (currentTab === 'tratar') currentTab = 'form';
+      tratarResumo = null;
+    }
+
+    tabForm.classList.toggle('active', currentTab === 'form');
+    tabTratar.classList.toggle('active', currentTab === 'tratar');
+
+    renderTratarBadge();
+  }
+
+  function handleTratarError(error, silent = false) {
+    if (error?.codigo === 'sem_permissao' || error?.codigo === 'conta_bloqueada') {
+      capabilities = normalizeCaps(null);
+      tratarReset();
+      updateTratarTab();
+      applyView();
+
+      if (!silent) notice('Você não tem mais permissão para tratar solicitações.', 'error');
+
+      return;
+    }
+
+    if (authLost(error)) return;
+
+    if (!silent) notice(error?.message || 'Falha na tratativa.', 'error');
+  }
+
+  async function refreshTratarResumo() {
+    if (!canTratar()) return;
+
+    try {
+      const data = await api('GET', '/tratativa/resumo');
+
+      if (!canTratar()) return;
+
+      tratarResumo = data;
+      renderTratarBadge();
+      updateTratarChips();
+    } catch (error) {
+      handleTratarError(error, true);
+    }
+  }
+
+  function fmtDateTime(value) {
+    const date = new Date(value);
+
+    return Number.isNaN(date.getTime()) ? '—' : date.toLocaleString();
+  }
+
+  function updateTratarChips() {
+    if (!tratarUi) return;
+
+    const counts = tratarResumo?.porStatus || {};
+    const totals = {
+      ...counts,
+      abertas: tratarResumo?.abertas,
+      todas: tratarResumo ? Object.values(counts).reduce((sum, value) => sum + Number(value || 0), 0) : undefined
+    };
+
+    tratarUi.chips.replaceChildren();
+
+    for (const [key, label] of TRATAR_FILTROS) {
+      const chip = el('button', label, tratarUi.chips, 'chip');
+
+      chip.type = 'button';
+      chip.dataset.key = key;
+      chip.setAttribute('aria-pressed', String(tratar.status === key));
+
+      if (totals[key] != null && Number.isFinite(Number(totals[key]))) el('span', String(totals[key]), chip, 'n');
+
+      chip.onclick = () => {
+        tratar.status = key;
+        updateTratarChips();
+        tratarUi.chips.querySelector('[data-key="' + key + '"]')?.focus();
+        fetchTratar(false);
+      };
+    }
+  }
+
+  function buildTratarToolbar() {
+    tratarList.replaceChildren();
+
+    const tools = el('div', null, tratarList, 'mine-tools');
+    const search = el('input', null, tools, 'mine-search');
+
+    search.type = 'search';
+    search.placeholder = 'Buscar por número ou solicitante…';
+    search.setAttribute('aria-label', 'Buscar solicitações para tratar');
+    search.value = tratar.q;
+
+    let timer = null;
+
+    search.oninput = () => {
+      clearTimeout(timer);
+      timer = setTimeout(() => {
+        tratar.q = search.value;
+        fetchTratar(false);
+      }, 350);
+    };
+
+    const chips = el('div', null, tools, 'mine-chips');
+
+    chips.setAttribute('role', 'group');
+    chips.setAttribute('aria-label', 'Filtrar por status');
+
+    const reload = el('button', 'Atualizar', tools, 'chip link');
+
+    reload.type = 'button';
+    reload.onclick = () => {
+      fetchTratar(false);
+      refreshTratarResumo();
+    };
+
+    tratarUi = { search, chips, host: el('div', null, tratarList) };
+    updateTratarChips();
+  }
+
+  async function fetchTratar(append = false) {
+    if (!canTratar() || !tratarUi) return;
+
+    const seq = ++tratarSeq;
+    const page = append ? tratar.pagina + 1 : 1;
+    const query = new URLSearchParams({
+      status: tratar.status,
+      pagina: String(page),
+      limite: '25',
+      ordem: ['abertas', 'pendente'].includes(tratar.status) ? 'antigas' : 'recentes'
+    });
+
+    if (tratar.q.trim()) query.set('q', tratar.q.trim());
+
+    if (!append) tratarUi.host.replaceChildren(el('p', 'Carregando…', null, 'mine-empty'));
+
+    try {
+      const data = await api('GET', '/tratativa/fila?' + query.toString());
+
+      if (seq !== tratarSeq || !tratarUi) return;
+
+      tratar.items = append ? tratar.items.concat(data.itens || []) : (data.itens || []);
+      tratar.total = Number(data.total) || 0;
+      tratar.pagina = Number(data.pagina) || page;
+      tratar.temMais = data.temMais === true;
+      drawTratar();
+    } catch (error) {
+      if (seq !== tratarSeq || !tratarUi) return;
+
+      tratarUi.host.replaceChildren(el('p', error.message, null, 'mine-empty error-text'));
+      handleTratarError(error, true);
+    }
+  }
+
+  function drawTratar() {
+    if (!tratarUi) return;
+
+    const host = tratarUi.host;
+
+    host.replaceChildren();
+
+    if (!tratar.items.length) {
+      el(
+        'p',
+        tratar.q || tratar.status !== 'abertas' ? 'Nenhuma solicitação encontrada com esses filtros.' : 'Nenhuma solicitação aberta para tratar.',
+        host,
+        'mine-empty'
+      );
+      return;
+    }
+
+    const table = el('table', null, host, 'table');
+    const caption = el('caption', null, table);
+
+    caption.textContent = 'Tratativa · ' + tratar.items.length + ' de ' + tratar.total;
+
+    const headRow = el('tr', null, el('thead', null, table));
+    const columns = ['ID', 'Solicitação', 'Solicitante', 'Status', 'Data', 'Ações'];
+
+    columns.forEach(label => {
+      el('th', label, headRow).scope = 'col';
+    });
+
+    const tbody = el('tbody', null, table);
+
+    for (const item of tratar.items) {
+      const row = el('tr', null, tbody);
+
+      row.dataset.id = String(item.id);
+
+      el('td', '#' + item.id, row);
+      el('td', item.formulario || item.tipoLabel || 'Solicitação', row);
+      el('td', item.solicitante?.usuario || item.solicitante?.nome || '—', row);
+      el('span', item.statusLabel || item.status || '—', el('td', null, row), 'mine-status ' + statusClassOf(item));
+      el('td', fmtDateTime(item.criadaEm), row);
+
+      const actions = el('td', null, row, 'actions');
+      const open = el('button', 'Tratar', actions, 'primary');
+
+      open.type = 'button';
+      open.setAttribute('aria-label', 'Tratar solicitação #' + item.id);
+      open.onclick = () => openTratar(item.id);
+
+      const url = requestUrl(item);
+
+      if (url) {
+        const link = el('a', 'Abrir', actions);
+
+        link.href = url;
+        link.target = '_blank';
+        link.rel = 'noopener noreferrer';
+      }
+
+      Array.from(row.children).forEach((cell, index) => { cell.dataset.label = columns[index]; });
+    }
+
+    if (tratar.temMais) {
+      const more = el('button', 'Carregar mais', host, 'chip');
+
+      more.type = 'button';
+      more.style.margin = '12px 18px';
+      more.onclick = () => fetchTratar(true);
+    }
+  }
+
+  function startTratar() {
+    buildTratarToolbar();
+    fetchTratar(false);
+    refreshTratarResumo();
+  }
+
+  function showTratarList() {
+    tratarDetailId = null;
+    clearTratarUrls();
+    tratarDetail.hidden = true;
+    tratarCard.hidden = false;
+    tratarDetailBody.replaceChildren();
+    fetchTratar(false);
+    refreshTratarResumo();
+  }
+
+  // Anexo é binário e exige o token: busca pelo GM e vira blob local.
+  function apiBlob(path) {
+    const credential = token;
+
+    return new Promise((resolve, reject) => {
+      GM_xmlhttpRequest({
+        method: 'GET',
+        url: API + path,
+        anonymous: true,
+        timeout: 25000,
+        responseType: 'blob',
+        headers: { 'X-API-TOKEN': credential },
+        onload: response => {
+          if (response.status >= 200 && response.status < 300 && response.response) resolve(response.response);
+          else reject(new Error('HTTP ' + response.status));
+        },
+        onerror: () => reject(new Error('Falha de rede.')),
+        ontimeout: () => reject(new Error('Tempo esgotado.'))
+      });
+    });
+  }
+
+  function goToContext(ctx) {
+    const lat = Number(ctx?.center?.lat);
+    const lon = Number(ctx?.center?.lon);
+
+    if (!sdk || !Number.isFinite(lat) || !Number.isFinite(lon)) {
+      notice('Não foi possível localizar no mapa: SDK ou coordenadas indisponíveis.', 'error');
+      return;
+    }
+
+    const zoom = Number(ctx.zoom);
+
+    try {
+      sdk.Map.setMapCenter({
+        lonLat: { lon, lat },
+        zoomLevel: Number.isFinite(zoom) && zoom >= 12 && zoom <= 22 ? Math.round(zoom) : 18
+      });
+    } catch (error) {
+      warn('Ir ao local:', error.message);
+      notice('Não foi possível mover o mapa.', 'error');
+      return;
+    }
+
+    // Seleção é "melhor esforço": os objetos podem ainda não estar carregados.
+    const groups = { segment: [], venue: [] };
+
+    for (const object of Array.isArray(ctx.objetos) ? ctx.objetos : []) {
+      if (object?.type === 'segment' && Number.isFinite(Number(object.id))) groups.segment.push(Number(object.id));
+      else if (object?.type === 'venue' && object.id != null) groups.venue.push(String(object.id));
+    }
+
+    const type = groups.segment.length ? 'segment' : groups.venue.length ? 'venue' : null;
+
+    if (type) {
+      setTimeout(() => {
+        try {
+          sdk.Editing.setSelection({ selection: { objectType: type, ids: groups[type] } });
+        } catch (error) {
+          warn('Seleção do local:', error.message);
+        }
+      }, 1200);
+    }
+
+    close();
+  }
+
+  async function openTratar(id, options = {}) {
+    if (!canTratar()) return;
+
+    const keepScroll = options.keepScroll ? scroll.scrollTop : 0;
+
+    tratarDetailId = id;
+    clearTratarUrls();
+    tratarCard.hidden = true;
+    tratarDetail.hidden = false;
+    tratarDetailTitle.textContent = 'Solicitação #' + id;
+    tratarDetailBody.replaceChildren(el('p', 'Carregando…', null, 'muted'));
+
+    try {
+      const data = await api('GET', '/tratativa/' + encodeURIComponent(String(id)));
+
+      if (String(tratarDetailId) !== String(id)) return;
+
+      renderTratarDetail(data);
+      scroll.scrollTop = keepScroll;
+    } catch (error) {
+      if (String(tratarDetailId) !== String(id)) return;
+
+      tratarDetailBody.replaceChildren(el('p', error.message, null, 'error-text'));
+      handleTratarError(error, true);
+    }
+  }
+
+  function renderTratarDetail(data) {
+    const body = tratarDetailBody;
+
+    body.replaceChildren();
+
+    const top = el('div', null, body, 't-sec');
+    const titleLine = el('div', null, top, 't-meta');
+
+    el('strong', data.formulario || data.tipoLabel || 'Solicitação', titleLine);
+    el('span', data.statusLabel || data.status || '—', titleLine, 'mine-status ' + statusClassOf(data));
+
+    const meta = el('div', null, top, 't-meta');
+
+    el('span', 'Solicitante: ' + (data.solicitante?.usuario || data.solicitante?.nome || '—'), meta);
+    el('span', 'Criada: ' + fmtDateTime(data.criadaEm), meta);
+    el('span', 'Atualizada: ' + fmtDateTime(data.atualizadaEm), meta);
+
+    if (Array.isArray(data.responsaveis) && data.responsaveis.length) {
+      el('span', 'Responsáveis: ' + data.responsaveis.join(', '), meta);
+    }
+
+    const siteUrl = requestUrl(data);
+
+    if (siteUrl) {
+      const link = el('a', 'Abrir no site', meta);
+
+      link.href = siteUrl;
+      link.target = '_blank';
+      link.rel = 'noopener noreferrer';
+    }
+
+    if (Array.isArray(data.respostas) && data.respostas.length) {
+      const section = el('div', null, body, 't-sec');
+
+      el('h4', 'Dados enviados', section);
+
+      const list = el('dl', null, section, 't-kv');
+
+      for (const item of data.respostas) {
+        el('dt', item.label, list);
+
+        const dd = el('dd', null, list);
+        const value = String(item.valor ?? '');
+
+        if (/^https?:\/\//i.test(value)) {
+          const anchor = el('a', value, dd);
+
+          anchor.href = value;
+          anchor.target = '_blank';
+          anchor.rel = 'noopener noreferrer';
+        } else {
+          dd.textContent = value || '—';
+        }
+      }
+    }
+
+    const ctx = data.contexto;
+
+    if (Number.isFinite(Number(ctx?.center?.lat)) && Number.isFinite(Number(ctx?.center?.lon))) {
+      const section = el('div', null, body, 't-sec');
+
+      el('h4', 'Local no mapa', section);
+
+      const objects = Array.isArray(ctx.objetos) ? ctx.objetos : [];
+      const segments = objects.filter(object => object?.type === 'segment').length;
+      const venues = objects.filter(object => object?.type === 'venue').length;
+      const names = objects.slice(0, 5).map(object => object.name || object.streetName || '#' + object.id).join(', ');
+
+      el(
+        'p',
+        'Capturado em ' + fmtDateTime(ctx.capturadoEm) + ' · ' + segments + ' segmento(s) e ' + venues + ' local(is) selecionados' + (names ? ': ' + names : '') + '.',
+        section,
+        'muted'
+      );
+
+      const go = el('button', 'Ir ao local no WME', section, 'primary');
+
+      go.type = 'button';
+      go.disabled = !sdk;
+      go.title = sdk ? 'Centraliza o mapa e fecha esta janela.' : 'SDK do WME indisponível.';
+      go.onclick = () => goToContext(ctx);
+    }
+
+    const images = (Array.isArray(data.anexos) ? data.anexos : [])
+      .filter(anexo => /^[a-f0-9]{40}\.(jpg|png|webp)$/.test(String(anexo.nome)));
+
+    if (images.length) {
+      const section = el('div', null, body, 't-sec');
+
+      el('h4', 'Anexos (' + images.length + ')', section);
+
+      const gallery = el('div', null, section, 't-files');
+
+      for (const anexo of images) {
+        const figure = el('figure', null, gallery);
+        const image = el('img', null, figure);
+        const caption = el('small', anexo.campo || 'Anexo', figure);
+
+        image.alt = 'Anexo ' + (anexo.campo || '');
+
+        apiBlob('/solicitacoes/' + encodeURIComponent(String(data.id)) + '/anexos/' + anexo.nome)
+          .then(blob => {
+            if (String(tratarDetailId) !== String(data.id)) return;
+
+            const typed = blob.type ? blob : blob.slice(0, blob.size, anexo.mime || 'image/png');
+            const url = URL.createObjectURL(typed);
+
+            tratarUrls.push(url);
+            image.src = url;
+            image.onclick = () => window.open(url, '_blank', 'noopener');
+          })
+          .catch(() => { caption.textContent = 'Anexo indisponível'; });
+      }
+    }
+
+    const comments = Array.isArray(data.comentarios) ? data.comentarios : [];
+    const talk = el('div', null, body, 't-sec');
+
+    el('h4', 'Comentários (' + comments.length + ')', talk);
+
+    if (!comments.length) el('p', 'Nenhum comentário ainda.', talk, 'muted');
+
+    const thread = el('div', null, talk, 't-thread');
+
+    for (const comment of comments) {
+      const message = el('div', null, thread, 't-msg' + (comment.interno ? ' interno' : ''));
+      const who = el('div', null, message, 'who');
+
+      el('strong', comment.autor || '—', who);
+      el('span', fmtDateTime(comment.criadoEm), who);
+
+      if (comment.interno) el('span', 'Interno', who, 't-pill');
+
+      el('p', comment.texto || '', message);
+    }
+
+    const history = Array.isArray(data.historico) ? data.historico : [];
+
+    if (history.length) {
+      const section = el('div', null, body, 't-sec');
+
+      el('h4', 'Histórico de status', section);
+
+      const list = el('ol', null, section, 't-hist');
+
+      for (const entry of history) {
+        el(
+          'li',
+          fmtDateTime(entry.criadoEm) + ' — ' + (entry.de ? entry.de + ' → ' : '') + (entry.para || '—') +
+            (entry.autor ? ' (' + entry.autor + ')' : '') + (entry.nota ? ': ' + entry.nota : ''),
+          list
+        );
+      }
+    }
+
+    renderTratarActions(body, data);
+  }
+
+  function renderTratarActions(parent, data) {
+    const wrap = el('div', null, parent, 't-actions');
+
+    // Responder
+    const reply = el('div', null, wrap, 't-sec');
+
+    el('h4', 'Responder', reply);
+
+    const message = el('textarea', null, reply);
+
+    message.rows = 4;
+    message.maxLength = 2000;
+    message.placeholder = 'Escreva a mensagem…';
+    message.setAttribute('aria-label', 'Mensagem');
+
+    const internalLabel = el('label', null, reply, 'choice');
+    const internal = el('input', null, internalLabel);
+
+    internal.type = 'checkbox';
+    internalLabel.append(document.createTextNode(' Nota interna (só a equipe vê; não envia e-mail)'));
+    el('small', 'Comentários públicos enviam e-mail ao solicitante.', reply, 'muted');
+
+    const send = el('button', 'Enviar comentário', reply, 'primary');
+
+    send.type = 'button';
+    send.style.marginTop = '10px';
+    send.onclick = async () => {
+      const text = message.value.trim();
+
+      if (!text) {
+        notice('Escreva uma mensagem.', 'error');
+        message.focus();
+        return;
+      }
+
+      if (tratarBusy) {
+        notice('Aguarde a operação terminar.');
+        return;
+      }
+
+      tratarBusy = true;
+      send.disabled = true;
+
+      try {
+        await api('POST', '/tratativa/' + encodeURIComponent(String(data.id)) + '/comentarios', { mensagem: text, interno: internal.checked });
+        notice('Comentário enviado.', 'success');
+        await openTratar(data.id, { keepScroll: true });
+      } catch (error) {
+        handleTratarError(error);
+      } finally {
+        tratarBusy = false;
+        send.disabled = false;
+      }
+    };
+
+    // Status
+    const change = el('div', null, wrap, 't-sec');
+
+    el('h4', 'Alterar status', change);
+
+    const options = Array.isArray(data.acoes?.statusPermitidos) ? data.acoes.statusPermitidos : [];
+
+    if (data.acoes?.bloqueio) el('p', data.acoes.bloqueio, change, 't-block');
+
+    const select = el('select', null, change);
+
+    select.setAttribute('aria-label', 'Novo status');
+    el('option', 'Escolher novo status…', select).value = '';
+
+    for (const option of options) el('option', option.label, select).value = option.value;
+
+    const note = el('textarea', null, change);
+
+    note.rows = 3;
+    note.maxLength = 2000;
+    note.placeholder = 'Nota para o solicitante (opcional)';
+    note.setAttribute('aria-label', 'Nota do status');
+    el('small', 'Mudanças de status enviam e-mail ao solicitante.', change, 'muted');
+
+    const apply = el('button', 'Aplicar status', change, 'primary');
+
+    apply.type = 'button';
+    apply.style.marginTop = '10px';
+    apply.disabled = !options.length;
+    apply.onclick = async () => {
+      const next = select.value;
+
+      if (!next) {
+        notice('Escolha o novo status.', 'error');
+        select.focus();
+        return;
+      }
+
+      const label = options.find(option => option.value === next)?.label || next;
+
+      if (STATUS_FINAIS.includes(next) && !(await confirmDialog(
+        'Confirmar status',
+        'Marcar a solicitação #' + data.id + ' como “' + label + '”? O solicitante será avisado por e-mail.',
+        'Confirmar'
+      ))) {
+        return;
+      }
+
+      if (tratarBusy) {
+        notice('Aguarde a operação terminar.');
+        return;
+      }
+
+      tratarBusy = true;
+      apply.disabled = true;
+
+      try {
+        await api('POST', '/tratativa/' + encodeURIComponent(String(data.id)) + '/status', { status: next, nota: note.value.trim() });
+        notice('Status atualizado para “' + label + '”.', 'success');
+        await openTratar(data.id, { keepScroll: true });
+        refreshTratarResumo();
+      } catch (error) {
+        handleTratarError(error);
+      } finally {
+        tratarBusy = false;
+        apply.disabled = false;
+      }
+    };
+  }
+
   function showMineList() {
     openDetailId = null;
     detailCard.hidden = true;
@@ -3175,6 +3934,8 @@
   accountDisconnect.onclick = () => disconnect(true);
   tabForm.onclick = () => showTab('form');
   tabMine.onclick = () => showTab('mine');
+  tabTratar.onclick = () => showTab('tratar');
+  tratarBack.onclick = () => showTratarList();
   tabSettings.onclick = () => showTab('settings');
 
   registerButton.onclick = register;
