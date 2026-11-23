@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.21
+// @version      4.2.5.22
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.21';
+  const VERSION = '4.2.5.22';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -194,6 +194,12 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
+        version: '4.2.5.22',
+        date: '2026-11-23',
+        changes: {
+          'pt-BR': '<p>Formulários com regras por papel (ex.: Gerente de Estado/País e Nível): campos e opções restritos são decididos pelo servidor, e as variantes mudam rótulo, ajuda e limites conforme a resposta.</p>'
+        }
+      }, {
         version: '4.2.5.21',
         date: '2026-11-22',
         changes: {
@@ -1408,6 +1414,30 @@
     }
   }
 
+  // Variantes (vindas do servidor): trocam rotulo/ajuda/limites conforme outra resposta.
+  // O servidor aplica os mesmos limites no envio; aqui e so o espelho na tela.
+  function fieldView(field) {
+    if (!Array.isArray(field.variantes) || !field.variantes.length) return field;
+
+    let view = field;
+
+    for (const variant of field.variantes) {
+      const matches = Object.entries(variant.quando || {}).every(([key, expected]) =>
+        Array.isArray(expected) ? expected.includes(answers[key]) : answers[key] === expected
+      );
+
+      if (!matches) continue;
+
+      view = { ...view };
+
+      for (const prop of ['label', 'placeholder', 'ajuda', 'min', 'max', 'minLength', 'maxLength']) {
+        if (Object.hasOwn(variant, prop)) view[prop] = variant[prop];
+      }
+    }
+
+    return view;
+  }
+
   function visible(field, visited = new Set()) {
     if (visited.has(field.chave)) return false;
 
@@ -1447,7 +1477,9 @@
 
     if (!definition) return;
 
-    for (const field of definition.campos) {
+    for (const baseField of definition.campos) {
+      const field = fieldView(baseField);
+
       if (!visible(field)) continue;
 
       const box = el('div', null, fieldArea, 'field');
@@ -1466,7 +1498,10 @@
         scheduleSave();
         liveValidate(field.chave);
 
-        if (definition.campos.some(item => item.mostrarSe && Object.hasOwn(item.mostrarSe, field.chave))) {
+        if (definition.campos.some(item =>
+          (item.mostrarSe && Object.hasOwn(item.mostrarSe, field.chave)) ||
+          (item.variantes || []).some(variant => Object.hasOwn(variant.quando || {}, field.chave))
+        )) {
           renderFields();
         }
       };
@@ -1662,7 +1697,9 @@
     const errors = {};
     const allowed = ['text', 'textarea', 'number', 'email', 'url', 'date', 'select', 'radio', 'checkbox', 'file'];
 
-    for (const field of definition.campos) {
+    for (const baseField of definition.campos) {
+      const field = fieldView(baseField);
+
       if (!visible(field)) continue;
 
       const value = answers[field.chave];
