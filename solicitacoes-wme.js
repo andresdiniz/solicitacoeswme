@@ -1,13 +1,13 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.22
+// @version      4.2.5.23
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
 // @supportURL   https://github.com/andresdiniz/ToolboxWaze/issues
-// @updateURL    https://raw.githubusercontent.com/andresdiniz/ToolboxWaze/main/ToolboxWaze.user.js
-// @downloadURL  https://raw.githubusercontent.com/andresdiniz/ToolboxWaze/main/ToolboxWaze.user.js
+// @updateURL    https://raw.githubusercontent.com/andresdiniz/ToolboxWaze/main/public/userscripts/toolboxwaze-solicitacoes.user.js
+// @downloadURL  https://raw.githubusercontent.com/andresdiniz/ToolboxWaze/main/public/userscripts/toolboxwaze-solicitacoes.user.js
 // @match        https://www.waze.com/editor*
 // @match        https://www.waze.com/*/editor*
 // @match        https://beta.waze.com/editor*
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.22';
+  const VERSION = '4.2.5.23';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -41,6 +41,11 @@
   const GA_MEASUREMENT_ID = 'G-M30YGWFGV8';
   const GA_API_SECRET = 'liFqyf8RQ3yNiV_BeFpH0A';
   const MONITORING_ENDPOINT = API + '/monitoring/events';
+  // Cidade da área em edição (vem do modelo de dados do WME) enviada junto com os eventos de uso.
+  // Coloque false para parar de enviar localização.
+  const GA_SEND_LOCATION = true;
+  // Um número por carregamento da página: o GA4 usa para agrupar os eventos em uma sessão.
+  const GA_SESSION_ID = Math.floor(Date.now() / 1000);
   const TELEMETRY_FLUSH_MS = 30000;
   const TELEMETRY_MAX_QUEUE = 50;
   const PAGE = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
@@ -72,12 +77,106 @@
     return safe;
   }
 
+  // ===== Localização para o GA4: cidade da área em edição =====
+  // Fonte: modelo de dados do WME. Se há um segmento selecionado, vale o endereço dele; senão, a cidade
+  // predominante dos dados carregados no mapa. É a área que a pessoa edita, não o endereço dela.
+  const BR_UF = {
+    acre: 'AC', alagoas: 'AL', amapa: 'AP', amazonas: 'AM', bahia: 'BA', ceara: 'CE', 'distrito federal': 'DF',
+    'espirito santo': 'ES', goias: 'GO', maranhao: 'MA', 'mato grosso': 'MT', 'mato grosso do sul': 'MS',
+    'minas gerais': 'MG', para: 'PA', paraiba: 'PB', parana: 'PR', pernambuco: 'PE', piaui: 'PI',
+    'rio de janeiro': 'RJ', 'rio grande do norte': 'RN', 'rio grande do sul': 'RS', rondonia: 'RO',
+    roraima: 'RR', 'santa catarina': 'SC', 'sao paulo': 'SP', sergipe: 'SE', tocantins: 'TO'
+  };
+
+  function readLocation() {
+    if (!sdk) return null;
+
+    try {
+      const data = sdk.DataModel;
+      let city = null;
+      let state = null;
+      let country = null;
+      const segment = selection().find(item => item.type === 'segment');
+
+      if (segment) {
+        const address = data.Segments.getAddress({ segmentId: Number(segment.id) });
+
+        if (address && !address.isEmpty) {
+          city = address.city;
+          state = address.state;
+          country = address.country;
+        }
+      }
+
+      if (!city || city.isEmpty || !city.name) city = data.Cities?.getTopCity?.() ?? null;
+
+      if (!state?.name) {
+        state = (city?.stateId != null ? data.States?.getById?.({ stateId: city.stateId }) : null) ?? data.States?.getTopState?.() ?? null;
+      }
+
+      if (!country) country = data.Countries?.getTopCountry?.() ?? null;
+
+      const cityName = city && !city.isEmpty && city.name ? String(city.name).trim().slice(0, 80) : '';
+      const countryId = /^[A-Za-z]{2}$/.test(country?.abbr || '') ? country.abbr.toUpperCase() : '';
+      const stateName = String(state?.name || '').trim();
+      let uf = '';
+
+      if (countryId === 'BR') {
+        uf = BR_UF[plain(stateName)] || (/^[A-Za-z]{2}$/.test(stateName) ? stateName.toUpperCase() : '');
+      }
+
+      return { city: cityName, uf, countryId, regionId: uf ? 'BR-' + uf : '' };
+    } catch (error) {
+      warn('Localização:', error.message);
+
+      return null;
+    }
+  }
+
+  function refreshGeo() {
+    if (!GA_SEND_LOCATION) return;
+
+    const location = readLocation();
+
+    if (location && (location.city || location.countryId)) geoCache = location;
+  }
+
+  function geoEventParams() {
+    if (!GA_SEND_LOCATION || !geoCache) return {};
+
+    return {
+      ...(geoCache.city ? { cidade: geoCache.city } : {}),
+      ...(geoCache.uf ? { uf: geoCache.uf } : {}),
+      ...(geoCache.countryId ? { pais: geoCache.countryId } : {})
+    };
+  }
+
+  // Estrutura de user_location do Measurement Protocol (cidade + país/UF em ISO).
+  function geoPayload() {
+    if (!GA_SEND_LOCATION || !geoCache || !(geoCache.city || geoCache.countryId)) return {};
+
+    const location = {
+      ...(geoCache.city ? { city: geoCache.city } : {}),
+      ...(geoCache.regionId ? { region_id: geoCache.regionId } : {}),
+      ...(geoCache.countryId ? { country_id: geoCache.countryId } : {}),
+      ...(geoCache.countryId === 'BR' ? { subcontinent_id: '005', continent_id: '019' } : {})
+    };
+
+    return {
+      user_location: location,
+      user_properties: {
+        ...(geoCache.city ? { cidade: { value: geoCache.city.slice(0, 36) } } : {}),
+        ...(geoCache.uf ? { uf: { value: geoCache.uf } } : {})
+      }
+    };
+  }
+
   function trackEvent(name, params = {}) {
     if (!telemetryAllowed() || !name) return;
 
     telemetryQueue.push({
       name: String(name).slice(0, 60),
-      params: normalizeTelemetryParams(params),
+      params: { ...normalizeTelemetryParams(params), ...geoEventParams() },
       occurredAt: new Date().toISOString()
     });
 
@@ -114,13 +213,17 @@
 
     const events = telemetryQueue.splice(0, TELEMETRY_MAX_QUEUE);
 
+    refreshGeo();
+
     if (analyticsEnabled && gaClientId && GA_MEASUREMENT_ID && GA_API_SECRET) {
       const payload = {
         client_id: gaClientId,
+        ...geoPayload(),
         events: events.map(item => ({
           name: item.name,
           params: {
             engagement_time_msec: 100,
+            session_id: GA_SESSION_ID,
             script_version: VERSION,
             ...item.params
           }
@@ -194,6 +297,12 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
+        version: '4.2.5.23',
+        date: '2026-11-24',
+        changes: {
+          'pt-BR': '<p>Estatísticas de uso agora incluem a cidade da área que você está editando (para relatórios por cidade); os eventos pendentes são enviados ao fechar a aba.</p>'
+        }
+      }, {
         version: '4.2.5.22',
         date: '2026-11-23',
         changes: {
@@ -257,6 +366,7 @@
   }
   let telemetryQueue = [];
   let telemetryTimer = null;
+  let geoCache = null;
 
   const randomToken = () => {
     const bytes = new Uint8Array(32);
@@ -864,7 +974,7 @@
   el('h3', 'Sua conexão', account);
   const accountText = el('p', 'Desconectado', account, 'muted');
   const accountStatus = el('p', '—', account, 'muted');
-  el('small', 'Telemetria de uso ativa: eventos e tempos enviados ao projeto e ao GA4 configurado.', account);
+  el('small', 'Telemetria de uso ativa: eventos e tempos enviados ao projeto e ao GA4 configurado' + (GA_SEND_LOCATION ? ', incluindo a cidade da área que você está editando.' : '.'), account);
   const accountDisconnect = el('button', 'Desconectar este navegador', account);
   accountDisconnect.type = 'button';
   accountDisconnect.hidden = true;
@@ -939,7 +1049,7 @@
   function updateAnalyticsButton() {
     analyticsButton.textContent = 'Telemetria de uso ativa';
     analyticsButton.disabled = true;
-    analyticsButton.title = 'Eventos de uso e tempos são enviados ao servidor do projeto e ao GA4 configurado. Não inclua dados pessoais nos eventos.';
+    analyticsButton.title = 'Eventos de uso e tempos são enviados ao servidor do projeto e ao GA4 configurado' + (GA_SEND_LOCATION ? ', com a cidade da área em edição' : '') + '. Não inclua dados pessoais nos eventos.';
   }
 
   function showTab(tab) {
@@ -3926,6 +4036,8 @@
     modalOpen = true;
     overlay.hidden = false;
 
+    refreshGeo();
+
     trackEvent('modal_open', {
       connection_state: conn,
       selection_count: selection().length
@@ -4107,6 +4219,7 @@
 
   document.addEventListener('visibilitychange', () => {
     updateBusy();
+    if (document.hidden) flushTelemetry();
     if (document.hidden) {
       stopPoll();
       stopAlertPoll();
@@ -4135,7 +4248,8 @@
       form: definition?.slug,
       selected: selection().length,
       pending: Boolean(unresolved),
-      modalOpen: !overlay.hidden
+      modalOpen: !overlay.hidden,
+      geo: geoCache
     };
 
     log(diagnostics);
@@ -4189,11 +4303,14 @@
     context = collect();
     summary.textContent = summarize();
     prefillNick();
+    refreshGeo();
 
     sdk.Events.on({
       eventName: 'wme-selection-changed',
       eventHandler: () => {
         const count = selection().length;
+
+        refreshGeo();
 
         fabLabel.textContent = 'Formulário de solicitações BR' + (count ? ' (' + count + ')' : '');
 
