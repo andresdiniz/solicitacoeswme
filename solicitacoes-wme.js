@@ -1,7 +1,7 @@
 // ==UserScript==
 // @name         Formulário de solicitações BR
 // @namespace    https://github.com/andresdiniz/ToolboxWaze
-// @version      4.2.5.23
+// @version      4.2.5.24
 // @description  Solicitações ao ToolboxWaze direto do WME: conexão por e-mail, contexto SDK, formulários da API, anexos, rascunhos, histórico com links, verificação de duplicatas, acompanhamento e notificações de alterações.
 // @author       Andres Diniz
 // @homepageURL  https://github.com/andresdiniz/ToolboxWaze
@@ -31,7 +31,7 @@
 
   if (window.top !== window.self) return;
 
-  const VERSION = '4.2.5.23';
+  const VERSION = '4.2.5.24';
   const BASE = 'https://wazetoolbox.acheireviews.com.br';
   const API = BASE + '/api/wme';
   const PREFIX = '[Comunidade BR]';
@@ -48,6 +48,14 @@
   const GA_SESSION_ID = Math.floor(Date.now() / 1000);
   const TELEMETRY_FLUSH_MS = 30000;
   const TELEMETRY_MAX_QUEUE = 50;
+
+  // Verificação de alterações em segundo plano (não depende do modal estar aberto).
+  const ALERT_POLL_VISIBLE_MS = 60000;
+  const ALERT_POLL_HIDDEN_MS = 180000;
+  // Reconexão automática: espera inicial e teto do backoff.
+  const AUTO_RETRY_BASE_MS = 5000;
+  const AUTO_RETRY_MAX_MS = 300000;
+
   const PAGE = typeof unsafeWindow === 'undefined' ? window : unsafeWindow;
 
   const log = (...args) => console.info(PREFIX, ...args);
@@ -297,6 +305,12 @@
     changelog: {
       mode: 'bell',
       loader: async () => [{
+        version: '4.2.5.24',
+        date: '2026-11-27',
+        changes: {
+          'pt-BR': '<p>Conexão automática: quem já conectou este navegador volta a ficar conectado ao abrir o WME, sem precisar abrir o formulário. As notificações de alterações nas solicitações agora chegam em segundo plano, com o modal fechado, e a conexão tenta se recuperar sozinha após falhas de rede.</p>'
+        }
+      }, {
         version: '4.2.5.23',
         date: '2026-11-24',
         changes: {
@@ -402,6 +416,8 @@
   let tratarSeq = 0;
   let tratarBusy = false;
   let tratarUrls = [];
+  let autoTimer = null;
+  let autoAttempts = 0;
 
   const restoredPending = await store.get('tw3_pending', null);
   unresolved = restoredPending;
@@ -2101,7 +2117,8 @@
       setTimeout(() => (mailInput.value ? consentBox : mailInput).focus(), 0);
     }
 
-    if (state === 'ativo' && modalOpen) startAlertPoll();
+    // As notificações não dependem do modal: valem sempre que a conta está ativa.
+    if (state === 'ativo') startAlertPoll();
     else stopAlertPoll();
 
     applyView();
@@ -2165,30 +2182,53 @@
     }
   }
 
+  // ===== Verificação de alterações em segundo plano =====
+  // Roda enquanto a conta estiver ativa, com o modal aberto ou fechado. Em aba oculta o
+  // intervalo aumenta (o navegador já limita os timers) para poupar o servidor.
   let alertPollTimer = null;
+  let alertPollRunning = false;
   let lastSeen = await store.get('tw_alerts_last_seen', null);
 
-  function startAlertPoll() {
-    stopAlertPoll();
-    if (!modalOpen || document.hidden || conn !== 'ativo') return;
-    const tick = async () => {
+  function alertPollInterval() {
+    return document.hidden ? ALERT_POLL_HIDDEN_MS : ALERT_POLL_VISIBLE_MS;
+  }
+
+  function scheduleAlertPoll(delay) {
+    clearTimeout(alertPollTimer);
+
+    alertPollTimer = setTimeout(async () => {
+      alertPollTimer = null;
+
+      if (!alertPollRunning || conn !== 'ativo') {
+        alertPollRunning = false;
+        return;
+      }
+
       await checkAlerts();
       refreshTratarResumo().catch(() => {});
-      if (modalOpen && !document.hidden && conn === 'ativo') alertPollTimer = setTimeout(tick, 60000);
-    };
-    tick();
+
+      if (alertPollRunning && conn === 'ativo') scheduleAlertPoll(alertPollInterval());
+      else alertPollRunning = false;
+    }, delay);
+  }
+
+  // Idempotente: chamar de novo com o poll já ativo não reinicia o ciclo.
+  function startAlertPoll() {
+    if (alertPollRunning || conn !== 'ativo') return;
+
+    alertPollRunning = true;
+    scheduleAlertPoll(0);
   }
 
   function stopAlertPoll() {
-    if (alertPollTimer) {
-      clearTimeout(alertPollTimer);
-      alertPollTimer = null;
-    }
+    alertPollRunning = false;
+    clearTimeout(alertPollTimer);
+    alertPollTimer = null;
   }
 
   let alertsLoading = false;
   async function checkAlerts() {
-    if (alertsLoading || !modalOpen || document.hidden || conn !== 'ativo' || !identity) return;
+    if (alertsLoading || conn !== 'ativo' || !identity) return;
     alertsLoading = true;
     const run = async () => {
       const accountId = String(identity.id);
@@ -2217,7 +2257,9 @@
           buttonText: 'Abrir', action: 'abrir-solicitacao',
           data: { id: item.id, url: requestUrl(item) }
         });
-        if (unreadAccount === accountId && !(!detailCard.hidden && String(openDetailId) === id)) {
+        // Só considera "já visto" se a pessoa está de fato olhando o detalhe agora.
+        const viewing = modalOpen && !document.hidden && !detailCard.hidden && String(openDetailId) === id;
+        if (unreadAccount === accountId && !viewing) {
           unread[id] = version;
           unreadChanged = true;
         }
@@ -2235,7 +2277,11 @@
     try {
       if (navigator.locks?.request) await navigator.locks.request('tw-alert-poll', run);
       else await run();
-    } catch (error) { warn('Alertas:', error.message); }
+    } catch (error) {
+      warn('Alertas:', error.message);
+      // Falha de rede é transitória e o próximo ciclo tenta de novo; só credencial inválida reconecta.
+      authLost(error);
+    }
     finally { alertsLoading = false; }
   }
 
@@ -2332,13 +2378,51 @@
         setConn('registro');
         notice('Este dispositivo expirou por inatividade. Conecte novamente.', 'error');
       } else {
-        if (!silent) setConn('erro');
+        // Na conexão automática ainda estamos em "carregando": falha de rede vira "erro",
+        // e o autoConnect agenda nova tentativa.
+        if (!silent || conn === 'carregando') setConn('erro');
         notice(error.message, 'error');
       }
     } finally {
       busy = false;
       updateBusy();
     }
+  }
+
+  // ===== Conexão automática =====
+  // Se este navegador já foi conectado antes (há token guardado), reconecta em segundo plano
+  // assim que o script carrega, sem esperar a pessoa abrir o modal. Falhas transitórias
+  // (rede, servidor fora) são repetidas com espera crescente até conectar.
+  function scheduleAutoConnect() {
+    clearTimeout(autoTimer);
+
+    const delay = Math.min(AUTO_RETRY_MAX_MS, AUTO_RETRY_BASE_MS * 2 ** Math.min(autoAttempts, 6));
+
+    autoAttempts++;
+    autoTimer = setTimeout(() => { autoConnect(); }, delay);
+  }
+
+  async function autoConnect(force = false) {
+    clearTimeout(autoTimer);
+    autoTimer = null;
+
+    if (!token) return;
+    if (conn === 'ativo' && !force) return;
+
+    if (busy) {
+      scheduleAutoConnect();
+      return;
+    }
+
+    await boot(true);
+
+    if (conn === 'ativo') {
+      autoAttempts = 0;
+      return;
+    }
+
+    // 'registro' e 'pendente' dependem da pessoa; só erro de rede/servidor justifica repetir.
+    if ((conn === 'erro' || conn === 'carregando') && token) scheduleAutoConnect();
   }
 
   async function register() {
@@ -2469,6 +2553,8 @@
     updateBusy();
     stopPoll();
     stopAlertPoll();
+    clearTimeout(autoTimer);
+    autoTimer = null;
     clearTimeout(saveTimer);
 
     try {
@@ -4050,8 +4136,17 @@
 
     prefillNick();
 
-    if (!identity) boot();
-    else if (conn === 'ativo') startAlertPoll();
+    if (conn === 'ativo') {
+      // Já conectado em segundo plano: só garante o poll e atualiza as novidades agora.
+      startAlertPoll();
+      checkAlerts().catch(() => {});
+    } else if (!busy) {
+      // Conexão automática ainda não terminou (ou falhou): tenta já, mostrando o progresso.
+      clearTimeout(autoTimer);
+      autoTimer = null;
+      boot();
+    }
+
     ensureUnread().catch(() => {});
 
     closeButton.focus();
@@ -4071,10 +4166,13 @@
     clearTimeout(cooldownTick);
     cooldownTick = null;
     stopPoll();
-    stopAlertPoll();
+    // O poll de alterações continua com o modal fechado: é ele que gera as notificações.
     previousFocus?.focus();
 
     trackEvent('modal_closed');
+
+    // Conexão ainda pendente de confirmação ou com erro: o fechamento não derruba a reconexão.
+    if (token && conn === 'erro') scheduleAutoConnect();
   }
 
   fab.onclick = open;
@@ -4100,7 +4198,12 @@
   resendButton.onclick = resend;
   changeButton.onclick = () => disconnect(false);
   disconnectButton.onclick = () => disconnect(true);
-  retryButton.onclick = () => boot();
+  retryButton.onclick = () => {
+    clearTimeout(autoTimer);
+    autoTimer = null;
+    autoAttempts = 0;
+    boot();
+  };
   analyticsButton.disabled = true;
 
   refresh.onclick = async () => {
@@ -4219,18 +4322,62 @@
 
   document.addEventListener('visibilitychange', () => {
     updateBusy();
-    if (document.hidden) flushTelemetry();
+
     if (document.hidden) {
+      flushTelemetry();
+      // O poll de alterações segue (mais espaçado); só o poll de confirmação de e-mail para.
       stopPoll();
-      stopAlertPoll();
       return;
     }
 
-    if (modalOpen) {
-      if (conn === 'pendente') startPoll();
-      if (conn === 'ativo') startAlertPoll();
+    // Aba voltou ao foco: recupera o que passou enquanto estava oculta.
+    if (conn === 'pendente' && modalOpen) startPoll();
+
+    if (conn === 'ativo') {
+      startAlertPoll();
+      checkAlerts().catch(() => {});
+      refreshTratarResumo().catch(() => {});
+    } else if (token && conn === 'erro') {
+      autoAttempts = 0;
+      autoConnect();
     }
   });
+
+  // Voltou a internet: reconecta/verifica na hora, sem esperar o próximo ciclo.
+  window.addEventListener('online', () => {
+    if (!token) return;
+
+    if (conn === 'ativo') {
+      checkAlerts().catch(() => {});
+    } else if (conn === 'erro' || conn === 'carregando') {
+      autoAttempts = 0;
+      autoConnect();
+    }
+  });
+
+  // Sincroniza entre abas do WME: conectar ou desconectar em uma reflete nas outras.
+  try {
+    GM_addValueChangeListener(TOKEN_KEY, (name, oldValue, newValue, remote) => {
+      if (!remote) return;
+
+      if (newValue && newValue !== token) {
+        token = newValue;
+        autoAttempts = 0;
+        autoConnect(true);
+      } else if (!newValue && token) {
+        (async () => {
+          stopPoll();
+          stopAlertPoll();
+          clearTimeout(autoTimer);
+          autoTimer = null;
+          await dropToken();
+          setConn('registro');
+        })().catch(error => warn('Sincronização de token:', error.message));
+      }
+    });
+  } catch (error) {
+    warn('Listener de token indisponível:', error.message);
+  }
 
   for (const type of ['keydown', 'keypress', 'keyup']) {
     window.addEventListener(type, shieldKeyboard, { capture: true });
@@ -4249,6 +4396,8 @@
       selected: selection().length,
       pending: Boolean(unresolved),
       modalOpen: !overlay.hidden,
+      alertPoll: alertPollRunning,
+      autoConnectAttempts: autoAttempts,
       geo: geoCache
     };
 
@@ -4277,6 +4426,11 @@
     connection_state: conn,
     sdk_ready: Boolean(sdk)
   });
+
+  // Reconecta em segundo plano se este navegador já foi conectado antes. Não depende do SDK
+  // do WME nem do modal: a conexão e as notificações ficam ativas desde o carregamento.
+  if (token) autoConnect();
+  else setConn('registro');
 
   try {
     for (let attempt = 0; attempt < 200; attempt++) {
